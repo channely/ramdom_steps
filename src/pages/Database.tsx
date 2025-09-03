@@ -63,13 +63,23 @@ const Database: React.FC = () => {
       if (data.customVariables) summary.push(`${data.customVariables.length} 个自定义变量`);
       
       if (summary.length > 0) {
-        const confirmImport = confirm(
-          `即将导入:\n${summary.join('\n')}\n\n是否继续？`
+        // 询问用户导入方式
+        const importMode = confirm(
+          `即将导入:\n${summary.join('\n')}\n\n` +
+          `选择导入方式：\n` +
+          `确定 = 替换所有现有数据（推荐）\n` +
+          `取消 = 取消导入`
         );
         
-        if (!confirmImport) {
+        if (!importMode) {
           setIsImporting(false);
+          setImportFile(null);
           return;
+        }
+        
+        // 如果选择替换，先清空现有数据
+        if (importMode) {
+          await dbService.clearAllData();
         }
       }
       
@@ -77,6 +87,9 @@ const Database: React.FC = () => {
       await dbService.importData(data);
       alert(`数据导入成功！\n已导入：${summary.join(', ')}`);
       setImportFile(null);
+      
+      // 设置标记，防止初始化时重复加载模板
+      sessionStorage.setItem('skipTemplateInit', 'true');
       
       // 刷新页面以显示新数据
       window.location.reload();

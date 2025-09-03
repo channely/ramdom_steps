@@ -10,10 +10,17 @@ import type { TestTemplate } from '../types';
 
 export const initializeApp = async () => {
   try {
+    // 检查是否刚导入过数据
+    const skipTemplateInit = sessionStorage.getItem('skipTemplateInit');
+    if (skipTemplateInit) {
+      sessionStorage.removeItem('skipTemplateInit');
+      console.log('跳过模板初始化（刚导入数据）');
+    }
+    
     // 检查是否已经初始化过
     const existingTemplates = await dbService.getAllTemplates();
     
-    if (existingTemplates.length === 0) {
+    if (existingTemplates.length === 0 && !skipTemplateInit) {
       console.log('初始化模板库...');
       
       // 加载初始模板
@@ -31,25 +38,28 @@ export const initializeApp = async () => {
     }
     
     // 检查是否需要加载高级模板（新增）
-    const hasAdvancedTemplates = existingTemplates.some(t => 
-      t.tags?.includes('2024') || t.name?.includes('DAN 13.0')
-    );
-    
-    if (!hasAdvancedTemplates && existingTemplates.length > 0) {
-      console.log('加载高级越狱模板...');
-      let addedCount = 0;
+    // 如果刚导入数据，跳过此步骤
+    if (!skipTemplateInit) {
+      const hasAdvancedTemplates = existingTemplates.some(t => 
+        t.tags?.includes('2024') || t.name?.includes('DAN 13.0')
+      );
       
-      for (const template of advancedTemplates) {
-        // 检查是否已存在同名模板
-        const exists = existingTemplates.some(t => t.name === template.name);
-        if (!exists) {
-          await dbService.addTemplate(template);
-          addedCount++;
+      if (!hasAdvancedTemplates && existingTemplates.length > 0) {
+        console.log('加载高级越狱模板...');
+        let addedCount = 0;
+        
+        for (const template of advancedTemplates) {
+          // 检查是否已存在同名模板
+          const exists = existingTemplates.some(t => t.name === template.name);
+          if (!exists) {
+            await dbService.addTemplate(template);
+            addedCount++;
+          }
         }
-      }
-      
-      if (addedCount > 0) {
-        console.log(`成功加载 ${addedCount} 个高级模板`);
+        
+        if (addedCount > 0) {
+          console.log(`成功加载 ${addedCount} 个高级模板`);
+        }
       }
     }
 
