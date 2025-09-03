@@ -1,5 +1,6 @@
 import { dbService } from '../lib/db';
 import initialTemplates from '../data/initialTemplates';
+import advancedTemplates from '../data/advancedTemplates';
 import { loadCustomVariablesToGenerator } from './loadCustomVariables';
 
 export const initializeApp = async () => {
@@ -15,7 +16,36 @@ export const initializeApp = async () => {
         await dbService.addTemplate(template);
       }
       
-      console.log(`成功加载 ${initialTemplates.length} 个初始模板`);
+      // 同时加载高级模板（全新安装时）
+      for (const template of advancedTemplates) {
+        await dbService.addTemplate(template);
+      }
+      
+      const totalTemplates = initialTemplates.length + advancedTemplates.length;
+      console.log(`成功加载 ${totalTemplates} 个模板（基础: ${initialTemplates.length}, 高级: ${advancedTemplates.length}）`);
+    }
+    
+    // 检查是否需要加载高级模板（新增）
+    const hasAdvancedTemplates = existingTemplates.some(t => 
+      t.tags?.includes('2024') || t.name?.includes('DAN 13.0')
+    );
+    
+    if (!hasAdvancedTemplates && existingTemplates.length > 0) {
+      console.log('加载高级越狱模板...');
+      let addedCount = 0;
+      
+      for (const template of advancedTemplates) {
+        // 检查是否已存在同名模板
+        const exists = existingTemplates.some(t => t.name === template.name);
+        if (!exists) {
+          await dbService.addTemplate(template);
+          addedCount++;
+        }
+      }
+      
+      if (addedCount > 0) {
+        console.log(`成功加载 ${addedCount} 个高级模板`);
+      }
     }
 
     // 确保有默认的API配置
