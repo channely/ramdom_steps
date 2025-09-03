@@ -3,6 +3,7 @@ import initialTemplates from '../data/initialTemplates';
 import advancedTemplates from '../data/advancedTemplates';
 import { loadCustomVariablesToGenerator } from './loadCustomVariables';
 import { variableDataGenerator } from '../services/variableDataGenerator';
+import { detectTemplateVariables } from './variableDetector';
 import type { TestTemplate } from '../types';
 
 export const initializeApp = async () => {
@@ -92,14 +93,9 @@ const migrateTemplateVariables = async () => {
         continue;
       }
       
-      // 检测模板中的变量
-      const variablePattern = /\{([^}]+)\}/g;
-      const detectedVars = new Set<string>();
-      let match;
-      
-      while ((match = variablePattern.exec(template.template)) !== null) {
-        detectedVars.add(match[1]);
-      }
+      // 使用智能检测函数检测变量
+      const detectedVarNames = detectTemplateVariables(template.template);
+      const detectedVars = new Set(detectedVarNames);
       
       if (detectedVars.size === 0) continue;
       

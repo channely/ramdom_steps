@@ -662,16 +662,53 @@ export class VariableDataGenerator {
     
     // 查找所有 {variable} 格式的变量
     const variablePattern = /\{([^}]+)\}/g;
-    const matches = text.matchAll(variablePattern);
+    const matches = Array.from(text.matchAll(variablePattern));
     
-    for (const match of matches) {
+    // 从后往前替换，避免索引偏移
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const match = matches[i];
       const variableName = match[1];
       const placeholder = match[0];
-      const value = this.getRandomValue(variableName);
-      result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+      const index = match.index || 0;
+      
+      // 只替换有效的变量（避免JSON语法误识别）
+      if (this.isValidVariableContext(variableName, text, index)) {
+        const value = this.getRandomValue(variableName);
+        result = result.substring(0, index) + value + result.substring(index + placeholder.length);
+      }
     }
     
     return result;
+  }
+  
+  // 验证变量上下文是否有效（避免JSON误识别）
+  private isValidVariableContext(varName: string, template: string, index: number): boolean {
+    // 1. 排除包含JSON特殊字符的内容
+    if (/[":,\[\]\{\}]/.test(varName)) {
+      return false;
+    }
+    
+    // 2. 排除纯数字
+    if (/^\d+$/.test(varName)) {
+      return false;
+    }
+    
+    // 3. 检查前后字符上下文
+    const charBefore = template[index - 1];
+    const charAfter = template[index + varName.length + 2]; // +2 for {}
+    
+    // 如果紧邻JSON符号，且变量名不符合标准格式，跳过
+    if ((charBefore === ':' || charAfter === ':' || charBefore === '"' || charAfter === '"') &&
+        !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(varName)) {
+      return false;
+    }
+    
+    // 4. 变量名长度限制
+    if (varName.length > 50) {
+      return false;
+    }
+    
+    return true;
   }
 }
 

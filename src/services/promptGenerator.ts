@@ -1,5 +1,6 @@
 import type { TestTemplate, TemplateVariable } from '../types';
 import { variableDataGenerator } from './variableDataGenerator';
+import { detectTemplateVariables } from '../utils/variableDetector';
 
 interface GeneratorOptions {
   variations?: number;

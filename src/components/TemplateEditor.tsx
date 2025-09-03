@@ -9,6 +9,7 @@ import type { TestTemplate, TemplateVariable } from "../types";
 import { ATTACK_CATEGORIES } from "../types";
 import { dbService } from "../lib/db";
 import { variableDataGenerator } from "../services/variableDataGenerator";
+import { detectTemplateVariables } from "../utils/variableDetector";
 
 interface TemplateEditorProps {
   template?: TestTemplate | null;
@@ -56,20 +57,13 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
   // 检测模板中的变量并自动分类
   useEffect(() => {
-    const variablePattern = /\{([^}]+)\}/g;
-    const detected: { name: string; isGlobal: boolean }[] = [];
-    const seen = new Set<string>();
-    let match;
-
-    while ((match = variablePattern.exec(formData.template || "")) !== null) {
-      const varName = match[1];
-      if (!seen.has(varName)) {
-        seen.add(varName);
-        // 检查是否是全局变量
-        const isGlobal = variableDataGenerator.hasVariable(varName);
-        detected.push({ name: varName, isGlobal });
-      }
-    }
+    // 使用智能检测函数，避免JSON语法误识别
+    const detectedVarNames = detectTemplateVariables(formData.template || "");
+    
+    const detected: { name: string; isGlobal: boolean }[] = detectedVarNames.map(varName => ({
+      name: varName,
+      isGlobal: variableDataGenerator.hasVariable(varName)
+    }));
 
     setDetectedVariables(detected);
 
