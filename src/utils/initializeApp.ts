@@ -4,6 +4,8 @@ import advancedTemplates from '../data/advancedTemplates';
 import { loadCustomVariablesToGenerator } from './loadCustomVariables';
 import { variableDataGenerator } from '../services/variableDataGenerator';
 import { detectTemplateVariables } from './variableDetector';
+import { variableManager } from '../services/variableManager';
+import { runDataCleanup } from './dataCleanup';
 import type { TestTemplate } from '../types';
 
 export const initializeApp = async () => {
@@ -73,6 +75,34 @@ export const initializeApp = async () => {
 
     // 自动迁移现有模板的变量配置
     await migrateTemplateVariables();
+    
+    // 分析并分类所有变量
+    try {
+      await variableManager.analyzeAndCategorizeVariables();
+      console.log('完成变量分析和分类');
+    } catch (error) {
+      console.error('变量分析失败:', error);
+    }
+    
+    // 执行一次性数据清理（临时）
+    try {
+      // 检查是否已执行过清理 - v2版本包含内置变量导入
+      const cleanupKey = 'dataCleanupExecuted_v2';
+      const hasCleanedUp = localStorage.getItem(cleanupKey);
+      
+      if (!hasCleanedUp) {
+        console.log('执行数据清理和内置变量导入...');
+        const cleanupResult = await runDataCleanup();
+        console.log('数据清理结果:', cleanupResult);
+        
+        // 标记已清理
+        localStorage.setItem(cleanupKey, 'true');
+        // 清除旧版本标记
+        localStorage.removeItem('dataCleanupExecuted_v1');
+      }
+    } catch (error) {
+      console.error('数据清理失败:', error);
+    }
 
     return true;
   } catch (error) {

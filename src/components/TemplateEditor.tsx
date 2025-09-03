@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Plus, Trash2, Copy, RefreshCw, AlertCircle } from "lucide-react";
+import { X, Plus } from "lucide-react";
 import Button from "./ui/Button";
 import Input from "./ui/Input";
 import Select from "./ui/Select";
@@ -10,6 +10,7 @@ import { ATTACK_CATEGORIES } from "../types";
 import { dbService } from "../lib/db";
 import { variableDataGenerator } from "../services/variableDataGenerator";
 import { detectTemplateVariables } from "../utils/variableDetector";
+import { variableManager } from "../services/variableManager";
 
 interface TemplateEditorProps {
   template?: TestTemplate | null;
@@ -46,116 +47,175 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
     {
       name: string;
       isGlobal: boolean;
+      scope?: 'global' | 'private';
     }[]
   >([]);
+
+  const [previousDetectedVars, setPreviousDetectedVars] = useState<string[]>([]);
 
   useEffect(() => {
     if (template) {
       setFormData(template);
+      // 初始化已检测的变量
+      const initialVars = detectTemplateVariables(template.template);
+      setPreviousDetectedVars(initialVars);
     }
   }, [template]);
 
   // 检测模板中的变量并自动分类
   useEffect(() => {
-    // 使用智能检测函数，避免JSON语法误识别
-    const detectedVarNames = detectTemplateVariables(formData.template || "");
-    
-    const detected: { name: string; isGlobal: boolean }[] = detectedVarNames.map(varName => ({
-      name: varName,
-      isGlobal: variableDataGenerator.hasVariable(varName)
-    }));
+    const loadVariableInfo = async () => {
+      // 使用智能检测函数，避免JSON语法误识别
+      const detectedVarNames = detectTemplateVariables(formData.template || "");
+      
+      // 从数据库获取所有变量信息
+      const allVariables = await dbService.getAllCustomVariables();
+      const varMap = new Map(allVariables.map(v => [v.name, v]));
+      
+      const detected: { name: string; isGlobal: boolean; scope?: 'global' | 'private' }[] = detectedVarNames.map(varName => {
+        const dbVar = varMap.get(varName);
+        if (dbVar) {
+          // 使用数据库中的信息
+          return {
+            name: varName,
+            isGlobal: dbVar.scope === 'global',
+            scope: dbVar.scope
+          };
+        }
+        // 如果数据库中没有，检查是否在 variableDataGenerator 中
+        return {
+          name: varName,
+          isGlobal: variableDataGenerator.hasVariable(varName),
+          scope: variableDataGenerator.hasVariable(varName) ? 'global' : 'private'
+        };
+      });
 
-    setDetectedVariables(detected);
+      setDetectedVariables(detected);
 
-    // 自动配置变量
-    const globalVars = detected.filter((v) => v.isGlobal).map((v) => v.name);
-    const privateVars = detected.filter((v) => !v.isGlobal).map((v) => v.name);
+      // 自动配置变量
+      const globalVars = detected.filter((v) => v.isGlobal).map((v) => v.name);
+      const privateVars = detected.filter((v) => !v.isGlobal).map((v) => v.name);
 
-    const newTemplateVariables = {
-      global: globalVars,
-      private: formData.templateVariables?.private || {},
-    };
+      const newTemplateVariables = {
+        global: globalVars,
+        private: formData.templateVariables?.private || {},
+      };
 
-    // 为新检测到的私有变量初始化空数组
-    privateVars.forEach((varName) => {
-      if (!newTemplateVariables.private![varName]) {
-        newTemplateVariables.private![varName] = [""];
-      }
-    });
-
-    // 清理不存在的私有变量
-    if (newTemplateVariables.private) {
-      Object.keys(newTemplateVariables.private).forEach((varName) => {
-        if (!privateVars.includes(varName)) {
-          delete newTemplateVariables.private![varName];
+      // 为新检测到的私有变量初始化空数组
+      privateVars.forEach((varName) => {
+        if (!newTemplateVariables.private![varName]) {
+          newTemplateVariables.private![varName] = [""];
         }
       });
-    }
 
-    setFormData((prev) => ({
-      ...prev,
-      templateVariables: newTemplateVariables,
-    }));
+      // 清理不存在的私有变量
+      if (newTemplateVariables.private) {
+        Object.keys(newTemplateVariables.private).forEach((varName) => {
+          if (!privateVars.includes(varName)) {
+            delete newTemplateVariables.private![varName];
+          }
+        });
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        templateVariables: newTemplateVariables,
+      }));
+    };
+    
+    loadVariableInfo();
   }, [formData.template]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 获取当前模板中检测到的变量
+    const currentDetectedVars = detectTemplateVariables(formData.template || "");
 
     if (template?.id) {
+      // 更新模板
       await dbService.updateTemplate(template.id, formData);
+      
+      // 同步变量更新
+      await variableManager.syncTemplateVariables(
+        template.id,
+        previousDetectedVars,
+        currentDetectedVars
+      );
     } else {
-      await dbService.addTemplate(
+      // 创建新模板
+      const newTemplateId = await dbService.addTemplate(
         formData as Omit<TestTemplate, "id" | "createdAt" | "lastUpdated">,
       );
+      
+      // 为新模板同步变量
+      if (newTemplateId && typeof newTemplateId === 'string') {
+        await variableManager.syncTemplateVariables(
+          newTemplateId,
+          [],
+          currentDetectedVars
+        );
+      }
     }
 
     onSave();
   };
 
   // 更新私有变量的值
-  const updatePrivateVariableValues = (varName: string, values: string[]) => {
+  const updatePrivateVariableValues = async (varName: string, values: string[]) => {
     const templateVars = { ...formData.templateVariables };
     if (!templateVars.private) templateVars.private = {};
     templateVars.private[varName] = values;
     setFormData({ ...formData, templateVariables: templateVars });
+    
+    // 同步更新变量管理器中的值
+    try {
+      // 获取自定义变量
+      const customVars = await dbService.getAllCustomVariables();
+      const customVar = customVars.find(v => v.name === varName);
+      
+      if (customVar && customVar.id) {
+        // 更新变量值
+        await variableManager.updateVariable(customVar.id, { values });
+      }
+    } catch (error) {
+      console.error('同步私有变量值失败:', error);
+    }
   };
 
-  // 获取全局变量的所有枚举值（只读展示）
-  const getGlobalVariableValues = (varName: string): string[] => {
-    if (!variableDataGenerator.hasVariable(varName)) return [];
-    // 获取所有枚举值
-    return variableDataGenerator.getAllValues(varName);
-  };
-
-  const addVariable = () => {
-    const newVariable: TemplateVariable = {
-      name: "",
-      type: "text",
-      label: "",
-      required: false,
-      defaultValue: "",
+  // 存储变量的枚举值
+  const [variableValues, setVariableValues] = useState<Record<string, string[]>>({});
+  
+  // 加载变量的枚举值
+  useEffect(() => {
+    const loadVariableValues = async () => {
+      const allVariables = await dbService.getAllCustomVariables();
+      const values: Record<string, string[]> = {};
+      
+      allVariables.forEach(v => {
+        values[v.name] = v.values || [];
+      });
+      
+      // 如果数据库中没有，从 variableDataGenerator 获取
+      detectedVariables.forEach(({ name }) => {
+        if (!values[name] && variableDataGenerator.hasVariable(name)) {
+          values[name] = variableDataGenerator.getAllValues(name);
+        }
+      });
+      
+      setVariableValues(values);
     };
-
-    setFormData({
-      ...formData,
-      variables: [...(formData.variables || []), newVariable],
-    });
+    
+    if (detectedVariables.length > 0) {
+      loadVariableValues();
+    }
+  }, [detectedVariables]);
+  
+  // 获取公共变量的所有枚举值（只读展示）
+  const getGlobalVariableValues = (varName: string): string[] => {
+    return variableValues[varName] || [];
   };
 
-  const updateVariable = (
-    index: number,
-    updates: Partial<TemplateVariable>,
-  ) => {
-    const variables = [...(formData.variables || [])];
-    variables[index] = { ...variables[index], ...updates };
-    setFormData({ ...formData, variables });
-  };
-
-  const removeVariable = (index: number) => {
-    const variables = [...(formData.variables || [])];
-    variables.splice(index, 1);
-    setFormData({ ...formData, variables });
-  };
 
   const addTag = () => {
     if (tagInput.trim()) {
@@ -362,22 +422,22 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                             size="sm"
                             variant={isGlobal ? "info" : "warning"}
                           >
-                            {isGlobal ? "全局复用" : "私有专用"}
+                            {isGlobal ? "公共" : "私有"}
                           </Badge>
                         </div>
                       </div>
 
                       {isGlobal ? (
-                        // 全局变量 - 只读展示
+                        // 公共变量 - 只读展示
                         <div className="space-y-1">
                           <p className="text-xs text-gray-500 mb-1">
-                            枚举值（全局定义，不可修改）：
+                            枚举值（公共变量，在变量管理中定义）：
                           </p>
                           <div className="max-h-32 overflow-y-auto border border-dark-border rounded p-2">
                             <div className="flex flex-wrap gap-1">
                               {getGlobalVariableValues(varName).map(
                                 (value, idx) => (
-                                  <Badge key={idx} variant="secondary" size="sm">
+                                  <Badge key={idx} variant="default" size="sm">
                                     {value}
                                   </Badge>
                                 ),

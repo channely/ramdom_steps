@@ -9,6 +9,8 @@ export interface CustomVariable {
   values: string[];
   category: string;
   isSystem: boolean;
+  scope: 'global' | 'private';  // 变量作用域：全局或私有
+  usedByTemplates: string[];  // 使用此变量的模板ID列表
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -36,6 +38,14 @@ export class PromptSecurityDB extends Dexie {
       sessions: '++id, createdAt, status',
       apiConfigs: '++id, name, provider, isDefault, createdAt',
       customVariables: '++id, name, category, isSystem, createdAt'
+    });
+
+    this.version(3).stores({
+      templates: '++id, category, subcategory, name, riskLevel, *tags, createdAt, lastUpdated',
+      results: '++id, templateId, sessionId, timestamp, isVulnerable, status',
+      sessions: '++id, createdAt, status',
+      apiConfigs: '++id, name, provider, isDefault, createdAt',
+      customVariables: '++id, name, category, isSystem, scope, *usedByTemplates, createdAt'
     });
   }
 
