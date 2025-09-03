@@ -1,5 +1,6 @@
 import { dbService } from '../lib/db';
 import initialTemplates from '../data/initialTemplates';
+import { loadCustomVariablesToGenerator } from './loadCustomVariables';
 
 export const initializeApp = async () => {
   try {
@@ -32,6 +33,10 @@ export const initializeApp = async () => {
       });
       console.log('创建默认API配置');
     }
+
+    // 加载自定义变量到生成器
+    const customVarCount = await loadCustomVariablesToGenerator();
+    console.log(`加载了 ${customVarCount} 个自定义变量到生成器`);
 
     return true;
   } catch (error) {

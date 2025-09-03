@@ -47,6 +47,14 @@ const Variables: React.FC = () => {
       const customVars = await dbService.getAllCustomVariables();
       console.log('加载的自定义变量:', customVars);
       
+      // 将自定义变量添加到 variableDataGenerator
+      customVars.forEach((customVar: VariableDefinition) => {
+        if (customVar.name && customVar.values && customVar.values.length > 0) {
+          variableDataGenerator.addVariableData(customVar.name, customVar.values);
+          console.log(`已将自定义变量 ${customVar.name} 加载到生成器，值数量: ${customVar.values.length}`);
+        }
+      });
+      
       // 获取系统预定义变量
       const systemVars = getSystemVariables();
       console.log('系统变量数量:', systemVars.length);
@@ -236,12 +244,30 @@ const Variables: React.FC = () => {
     setPreviewVariable(variableName);
   };
 
-  const getPreviewValues = (variableName: string, count: number = 5): string[] => {
-    const values: string[] = [];
-    for (let i = 0; i < count; i++) {
-      values.push(variableDataGenerator.getRandomValue(variableName));
+  const getPreviewValues = (variableName: string, count: number = 10): string[] => {
+    // 从当前变量列表中找到对应的变量
+    const variable = variables.find(v => v.name === variableName);
+    
+    if (!variable || !variable.values || variable.values.length === 0) {
+      // 如果找不到变量或没有值，尝试从 variableDataGenerator 获取
+      const values: string[] = [];
+      for (let i = 0; i < count; i++) {
+        values.push(variableDataGenerator.getRandomValue(variableName));
+      }
+      return values;
     }
-    return values;
+    
+    // 如果变量有定义的值，随机选择并返回
+    const result: string[] = [];
+    const availableValues = variable.values;
+    
+    for (let i = 0; i < count; i++) {
+      // 随机选择一个值
+      const randomIndex = Math.floor(Math.random() * availableValues.length);
+      result.push(availableValues[randomIndex]);
+    }
+    
+    return result;
   };
 
   const copyVariableSyntax = (variableName: string) => {
