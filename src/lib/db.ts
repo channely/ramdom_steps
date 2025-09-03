@@ -2,11 +2,23 @@ import Dexie from 'dexie';
 import type { Table } from 'dexie';
 import type { TestTemplate, TestResult, TestSession, ApiConfig } from '../types';
 
+export interface CustomVariable {
+  id?: string;
+  name: string;
+  description: string;
+  values: string[];
+  category: string;
+  isSystem: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export class PromptSecurityDB extends Dexie {
   templates!: Table<TestTemplate>;
   results!: Table<TestResult>;
   sessions!: Table<TestSession>;
   apiConfigs!: Table<ApiConfig>;
+  customVariables!: Table<CustomVariable>;
 
   constructor() {
     super('PromptSecurityDB');
@@ -15,7 +27,8 @@ export class PromptSecurityDB extends Dexie {
       templates: '++id, category, subcategory, name, riskLevel, *tags, createdAt, lastUpdated',
       results: '++id, templateId, sessionId, timestamp, isVulnerable, status',
       sessions: '++id, createdAt, status',
-      apiConfigs: '++id, name, provider, isDefault, createdAt'
+      apiConfigs: '++id, name, provider, isDefault, createdAt',
+      customVariables: '++id, name, category, isSystem, createdAt'
     });
   }
 
@@ -193,6 +206,44 @@ export const dbService = {
     await db.results.clear();
     await db.sessions.clear();
     await db.apiConfigs.clear();
+    await db.customVariables.clear();
+  },
+
+  // Custom Variables CRUD operations
+  async createCustomVariable(variable: Omit<CustomVariable, 'id' | 'createdAt' | 'updatedAt'>) {
+    return await db.customVariables.add({
+      ...variable,
+      isSystem: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+  },
+
+  async getAllCustomVariables() {
+    return await db.customVariables.where('isSystem').equals(0).toArray();
+  },
+
+  async getCustomVariable(id: string) {
+    return await db.customVariables.get(id);
+  },
+
+  async updateCustomVariable(id: string, updates: Partial<CustomVariable>) {
+    return await db.customVariables.update(id, {
+      ...updates,
+      updatedAt: new Date()
+    });
+  },
+
+  async deleteCustomVariable(id: string) {
+    return await db.customVariables.delete(id);
+  },
+
+  async searchVariables(query: string) {
+    const all = await db.customVariables.toArray();
+    return all.filter(v => 
+      v.name.toLowerCase().includes(query.toLowerCase()) ||
+      v.description.toLowerCase().includes(query.toLowerCase())
+    );
   }
 };
 

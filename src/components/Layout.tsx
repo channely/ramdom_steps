@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Shield, FileText, Play, BarChart3, Settings, Database, AlertTriangle } from 'lucide-react';
+import { Shield, FileText, Play, BarChart3, Settings, Database, AlertTriangle, Variable } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,6 +12,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems = [
     { path: '/', icon: Shield, label: '安全测试' },
     { path: '/templates', icon: FileText, label: '模板管理' },
+    { path: '/variables', icon: Variable, label: '变量管理' },
     { path: '/execute', icon: Play, label: '批量测试' },
     { path: '/results', icon: BarChart3, label: '结果分析' },
     { path: '/database', icon: Database, label: '数据管理' },

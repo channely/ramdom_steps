@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Select from './ui/Select';
+import VariableSelector from './VariableSelector';
 import type { TestTemplate, TemplateVariable } from '../types';
 import { ATTACK_CATEGORIES } from '../types';
 import { dbService } from '../lib/db';
@@ -14,6 +15,7 @@ interface TemplateEditorProps {
 }
 
 const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSave }) => {
+  const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [formData, setFormData] = useState<Partial<TestTemplate>>({
     name: '',
     description: '',
@@ -193,13 +195,33 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
             />
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-200 mb-2">
-                模板内容
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-200">
+                  模板内容
+                </label>
+                <VariableSelector
+                  onInsert={(variable) => {
+                    const textarea = templateTextareaRef.current;
+                    if (textarea) {
+                      const start = textarea.selectionStart;
+                      const end = textarea.selectionEnd;
+                      const text = formData.template || '';
+                      const newText = text.substring(0, start) + variable + text.substring(end);
+                      setFormData({ ...formData, template: newText });
+                      // 设置光标位置到插入变量后
+                      setTimeout(() => {
+                        textarea.selectionStart = textarea.selectionEnd = start + variable.length;
+                        textarea.focus();
+                      }, 0);
+                    }
+                  }}
+                />
+              </div>
               <textarea
+                ref={templateTextareaRef}
                 value={formData.template}
                 onChange={(e) => setFormData({ ...formData, template: e.target.value })}
-                className="w-full h-32 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent-red"
+                className="w-full h-32 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent-red font-mono text-sm"
                 placeholder="输入模板内容，使用 {变量名} 格式插入变量"
                 required
               />

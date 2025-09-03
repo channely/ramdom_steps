@@ -6,6 +6,7 @@ import Execute from './pages/Execute';
 import Results from './pages/Results';
 import Database from './pages/Database';
 import Settings from './pages/Settings';
+import Variables from './pages/Variables';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/execute" element={<Execute />} />
           <Route path="/results" element={<Results />} />
           <Route path="/database" element={<Database />} />
+          <Route path="/variables" element={<Variables />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>

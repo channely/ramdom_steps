@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Copy, Download, Upload, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2, Copy, Download, Upload, FileText, Eye } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -8,6 +8,7 @@ import { dbService } from '../lib/db';
 import type { TestTemplate } from '../types';
 import { ATTACK_CATEGORIES } from '../types';
 import TemplateEditor from '../components/TemplateEditor';
+import TemplatePreview from '../components/TemplatePreview';
 
 const Templates: React.FC = () => {
   const [templates, setTemplates] = useState<TestTemplate[]>([]);
@@ -16,6 +17,7 @@ const Templates: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<TestTemplate | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<TestTemplate | null>(null);
 
   useEffect(() => {
     loadTemplates();
@@ -212,14 +214,23 @@ const Templates: React.FC = () => {
                     <Copy className="w-4 h-4 text-gray-400" />
                   </button>
                   <button
+                    onClick={() => setPreviewTemplate(template)}
+                    className="p-1 hover:bg-dark-border rounded"
+                    title="预览模板"
+                  >
+                    <Eye className="w-4 h-4 text-gray-400" />
+                  </button>
+                  <button
                     onClick={() => handleEdit(template)}
                     className="p-1 hover:bg-dark-border rounded"
+                    title="编辑模板"
                   >
                     <Edit className="w-4 h-4 text-gray-400" />
                   </button>
                   <button
                     onClick={() => handleDelete(template.id!)}
                     className="p-1 hover:bg-dark-border rounded"
+                    title="删除模板"
                   >
                     <Trash2 className="w-4 h-4 text-gray-400" />
                   </button>
@@ -246,6 +257,13 @@ const Templates: React.FC = () => {
             setShowEditor(false);
             loadTemplates();
           }}
+        />
+      )}
+
+      {previewTemplate && (
+        <TemplatePreview
+          template={previewTemplate}
+          onClose={() => setPreviewTemplate(null)}
         />
       )}
     </div>
