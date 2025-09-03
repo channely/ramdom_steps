@@ -21,6 +21,7 @@ const Execute: React.FC = () => {
   const [results, setResults] = useState<TestResult[]>([]);
   const [sessionId, setSessionId] = useState<string>('');
   const [useMockMode, setUseMockMode] = useState(true); // 默认使用模拟模式
+  const [testCount, setTestCount] = useState(3); // 每个模板的测试次数
 
   useEffect(() => {
     loadData();
@@ -80,12 +81,13 @@ const Execute: React.FC = () => {
       { name: '模拟模式', provider: 'mock' as const, endpoint: '', apiKey: 'test', model: 'mock' } :
       apiConfig!
 
+    const totalTestCount = selectedTemplates.length * testCount;
     const session = await dbService.createSession({
       name: `测试会话 ${new Date().toLocaleString()}`,
-      description: `测试 ${selectedTemplates.length} 个模板`,
+      description: `测试 ${selectedTemplates.length} 个模板，每个 ${testCount} 次`,
       createdAt: new Date(),
       updatedAt: new Date(),
-      totalTests: selectedTemplates.length,
+      totalTests: totalTestCount,
       completedTests: 0,
       vulnerableTests: 0,
       status: 'running',
@@ -99,8 +101,13 @@ const Execute: React.FC = () => {
     for (const templateId of selectedTemplates) {
       const template = templates.find(t => t.id === templateId);
       if (template) {
-        console.log('生成测试用例，模板:', template.name);
-        const prompts = promptGenerator.generateFromTemplate(template);
+        console.log(`生成测试用例，模板: ${template.name}, 次数: ${testCount}`);
+        // 只生成用户指定次数的测试用例，不使用额外的技术变体
+        const prompts = promptGenerator.generateFromTemplate(template, {
+          variations: testCount,
+          randomize: true,
+          useAdditionalTechniques: false // 不使用额外的技术变体
+        });
         console.log(`生成了 ${prompts.length} 个测试用例`);
         
         prompts.forEach(prompt => {
@@ -373,6 +380,27 @@ const Execute: React.FC = () => {
                     </p>
                   )}
                 </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-200 mb-2">
+                  每个模板测试次数
+                </label>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={testCount}
+                    onChange={(e) => setTestCount(Number(e.target.value))}
+                    className="flex-1"
+                    disabled={isRunning || isPaused}
+                  />
+                  <span className="text-white font-bold w-8 text-center">{testCount}</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  每个选中的模板将生成 {testCount} 个不同的测试提示词
+                </p>
               </div>
 
               <div className="flex flex-col space-y-2">

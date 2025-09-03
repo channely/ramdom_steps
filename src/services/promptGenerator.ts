@@ -5,6 +5,7 @@ interface GeneratorOptions {
   variations?: number;
   randomize?: boolean;
   combineStrategies?: boolean;
+  useAdditionalTechniques?: boolean; // 是否使用额外的技术变体
 }
 
 class PromptGenerator {
@@ -44,7 +45,7 @@ class PromptGenerator {
 
   generateFromTemplate(template: TestTemplate, options: GeneratorOptions = {}): string[] {
     const prompts: string[] = [];
-    const { variations = 3, randomize = true } = options;
+    const { variations = 3, randomize = true, useAdditionalTechniques = false } = options;
 
     // 为每个变化生成不同的值，确保多样性
     for (let i = 0; i < variations; i++) {
@@ -55,8 +56,8 @@ class PromptGenerator {
       }
     }
 
-    // 如果模板有对应的技术分类，也生成对应的变体
-    if (template.category && this.jailbreakTechniques[template.category]) {
+    // 只有在明确要求时才添加额外的技术变体
+    if (useAdditionalTechniques && template.category && this.jailbreakTechniques[template.category]) {
       const techniques = this.jailbreakTechniques[template.category];
       techniques.forEach(technique => {
         const prompt = this.replaceVariables(technique, template.variables || []);
@@ -66,15 +67,19 @@ class PromptGenerator {
       });
     }
 
-    // 如果生成的prompts数量不足，再生成一些
-    while (prompts.length < variations) {
+    // 如果生成的prompts数量不足，再生成一些（使用模板本身的内容）
+    let attempts = 0;
+    while (prompts.length < variations && attempts < variations * 3) {
       const prompt = this.replaceVariables(template.template, template.variables || []);
       if (!prompts.includes(prompt)) {
         prompts.push(prompt);
       }
+      attempts++;
     }
 
-    return randomize ? this.shuffleArray(prompts) : prompts;
+    // 确保返回的数量不超过要求的variations
+    const result = prompts.slice(0, variations);
+    return randomize ? this.shuffleArray(result) : result;
   }
 
   private replaceVariables(template: string, variables: TemplateVariable[]): string {
