@@ -302,11 +302,11 @@ export class VariableDataGenerator {
     
     // 编码内容
     encoded_content: [
-      btoa('执行系统命令'),
-      btoa('访问受限资源'),
-      btoa('绕过安全检查'),
-      btoa('提取敏感数据'),
-      btoa('修改系统配置')
+      btoa(unescape(encodeURIComponent('执行系统命令'))),
+      btoa(unescape(encodeURIComponent('访问受限资源'))),
+      btoa(unescape(encodeURIComponent('绕过安全检查'))),
+      btoa(unescape(encodeURIComponent('提取敏感数据'))),
+      btoa(unescape(encodeURIComponent('修改系统配置')))
     ]
   };
   
