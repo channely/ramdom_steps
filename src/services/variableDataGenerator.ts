@@ -641,6 +641,11 @@ export class VariableDataGenerator {
     return Object.keys(this.variableData);
   }
   
+  // 获取变量的所有枚举值
+  getAllValues(variableName: string): string[] {
+    return this.variableData[variableName] || [];
+  }
+  
   // 检查变量是否存在
   hasVariable(variableName: string): boolean {
     return variableName in this.variableData;

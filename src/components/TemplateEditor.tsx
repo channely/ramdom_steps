@@ -126,15 +126,11 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
     setFormData({ ...formData, templateVariables: templateVars });
   };
 
-  // 获取全局变量的示例值（只读展示）
+  // 获取全局变量的所有枚举值（只读展示）
   const getGlobalVariableValues = (varName: string): string[] => {
     if (!variableDataGenerator.hasVariable(varName)) return [];
-    // 获取几个示例值用于展示
-    const samples = new Set<string>();
-    for (let i = 0; i < 5 && samples.size < 3; i++) {
-      samples.add(variableDataGenerator.getRandomValue(varName));
-    }
-    return Array.from(samples);
+    // 获取所有枚举值
+    return variableDataGenerator.getAllValues(varName);
   };
 
   const addVariable = () => {
@@ -381,17 +377,22 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                         // 全局变量 - 只读展示
                         <div className="space-y-1">
                           <p className="text-xs text-gray-500 mb-1">
-                            示例值（不可修改，随机生成）：
+                            枚举值（全局定义，不可修改）：
                           </p>
-                          <div className="flex flex-wrap gap-2">
-                            {getGlobalVariableValues(varName).map(
-                              (value, idx) => (
-                                <Badge key={idx} variant="secondary" size="sm">
-                                  {value}
-                                </Badge>
-                              ),
-                            )}
+                          <div className="max-h-32 overflow-y-auto border border-dark-border rounded p-2">
+                            <div className="flex flex-wrap gap-1">
+                              {getGlobalVariableValues(varName).map(
+                                (value, idx) => (
+                                  <Badge key={idx} variant="secondary" size="sm">
+                                    {value}
+                                  </Badge>
+                                ),
+                              )}
+                            </div>
                           </div>
+                          <p className="text-xs text-gray-600">
+                            共 {getGlobalVariableValues(varName).length} 个值
+                          </p>
                         </div>
                       ) : (
                         // 私有变量 - 可编辑
