@@ -54,14 +54,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </nav>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-6">
-          <div className="bg-dark-border rounded-lg p-4">
-            <p className="text-xs text-gray-400 mb-2">安全提醒</p>
-            <p className="text-xs text-gray-300">
-              本工具仅供内部安全测试使用，请勿用于非法用途
-            </p>
-          </div>
-        </div>
       </aside>
 
       <main className="flex-1 overflow-hidden">
