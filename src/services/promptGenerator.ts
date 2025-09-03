@@ -86,38 +86,85 @@ class PromptGenerator {
     let result = template;
     const processedVariables = new Set<string>();
 
-    // 首先处理模板的本地变量（localVariables）
-    if (fullTemplate?.localVariables) {
-      Object.entries(fullTemplate.localVariables).forEach(([varName, varConfig]) => {
-        const placeholder = `{${varName}}`;
-        if (result.includes(placeholder)) {
-          let value = '';
-          
-          // 从本地变量值中随机选择一个
-          if (varConfig.values && varConfig.values.length > 0) {
-            const validValues = varConfig.values.filter(v => v && v.trim());
-            if (validValues.length > 0) {
-              value = validValues[Math.floor(Math.random() * validValues.length)];
+    // 处理新的简化变量结构
+    if (fullTemplate?.templateVariables) {
+      const { reused, customized, local } = fullTemplate.templateVariables;
+      
+      // 1. 处理局部变量（优先级最高）
+      if (local) {
+        Object.entries(local).forEach(([varName, varConfig]) => {
+          const placeholder = `{${varName}}`;
+          if (result.includes(placeholder)) {
+            let value = '';
+            
+            // 从局部变量值中随机选择一个
+            if (varConfig.values && varConfig.values.length > 0) {
+              const validValues = varConfig.values.filter(v => v && v.trim());
+              if (validValues.length > 0) {
+                value = validValues[Math.floor(Math.random() * validValues.length)];
+              }
+            }
+            
+            // 如果没有值，使用占位符
+            if (!value) {
+              value = `[${varName}]`;
+            }
+            
+            result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+            processedVariables.add(varName);
+          }
+        });
+      }
+      
+      // 2. 处理定制变量
+      if (customized) {
+        Object.entries(customized).forEach(([varName, varConfig]) => {
+          if (!processedVariables.has(varName)) {
+            const placeholder = `{${varName}}`;
+            if (result.includes(placeholder)) {
+              let value = '';
+              
+              // 从定制变量值中随机选择一个
+              if (varConfig.values && varConfig.values.length > 0) {
+                const validValues = varConfig.values.filter(v => v && v.trim());
+                if (validValues.length > 0) {
+                  value = validValues[Math.floor(Math.random() * validValues.length)];
+                }
+              }
+              
+              // 如果没有值但有基础变量，从全局获取
+              if (!value && varConfig.baseFrom && variableDataGenerator.hasVariable(varConfig.baseFrom)) {
+                value = variableDataGenerator.getRandomValue(varConfig.baseFrom);
+              }
+              
+              // 如果还是没有值，使用占位符
+              if (!value) {
+                value = `[${varName}]`;
+              }
+              
+              result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+              processedVariables.add(varName);
             }
           }
-          
-          // 如果没有有效值，且不是覆盖全局变量，尝试从全局获取
-          if (!value && !varConfig.isOverride && variableDataGenerator.hasVariable(varName)) {
-            value = variableDataGenerator.getRandomValue(varName);
+        });
+      }
+      
+      // 3. 处理复用的全局变量
+      if (reused) {
+        reused.forEach(varName => {
+          if (!processedVariables.has(varName)) {
+            const placeholder = `{${varName}}`;
+            if (result.includes(placeholder) && variableDataGenerator.hasVariable(varName)) {
+              const value = variableDataGenerator.getRandomValue(varName);
+              result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+              processedVariables.add(varName);
+            }
           }
-          
-          // 如果还是没有值，使用占位符
-          if (!value) {
-            value = `[${varName}]`;
-          }
-          
-          result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
-          processedVariables.add(varName);
-        }
-      });
+        });
+      }
     }
 
-    // 然后处理旧的variables数组（向后兼容）
+    // 处理旧的variables数组（向后兼容）
     variables.forEach(variable => {
       if (!processedVariables.has(variable.name)) {
         const placeholder = `{${variable.name}}`;
@@ -143,24 +190,8 @@ class PromptGenerator {
       }
     });
 
-    // 处理导入的全局变量
-    if (fullTemplate?.variableConfig?.importedVariables) {
-      fullTemplate.variableConfig.importedVariables.forEach(varName => {
-        if (!processedVariables.has(varName)) {
-          const placeholder = `{${varName}}`;
-          if (result.includes(placeholder) && variableDataGenerator.hasVariable(varName)) {
-            const value = variableDataGenerator.getRandomValue(varName);
-            result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
-            processedVariables.add(varName);
-          }
-        }
-      });
-    }
-
-    // 最后，如果启用了全局变量，使用variableDataGenerator替换所有剩余的变量
-    if (fullTemplate?.variableConfig?.useGlobalVariables !== false) {
-      result = variableDataGenerator.replaceAllVariables(result);
-    }
+    // 最后，替换所有剩余的变量（从全局变量库）
+    result = variableDataGenerator.replaceAllVariables(result);
 
     return result;
   }

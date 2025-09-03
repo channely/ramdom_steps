@@ -10,21 +10,25 @@ export interface TestTemplate {
   template: string;
   variables: TemplateVariable[];  // 保持向后兼容
   
-  // 新增：模板专属变量定义
-  localVariables?: {
-    [variableName: string]: {
-      description: string;
-      values: string[];
-      isOverride?: boolean;  // 是否覆盖同名全局变量
-      source?: 'local' | 'global';  // 变量来源
+  // 简化的变量管理
+  templateVariables?: {
+    // 复用的全局变量（只记录名称，值从全局获取）
+    reused?: string[];
+    // 定制的变量（基于全局变量克隆并修改）
+    customized?: {
+      [variableName: string]: {
+        description: string;
+        values: string[];
+        baseFrom?: string;  // 基于哪个全局变量定制
+      };
     };
-  };
-  
-  // 新增：变量配置选项
-  variableConfig?: {
-    useGlobalVariables?: boolean;  // 是否使用全局变量库（默认true）
-    importedVariables?: string[];  // 明确引入的全局变量名
-    autoDetectVariables?: boolean; // 是否自动检测模板中的变量（默认true）
+    // 局部变量（完全私有）
+    local?: {
+      [variableName: string]: {
+        description: string;
+        values: string[];
+      };
+    };
   };
   
   tags: string[];
