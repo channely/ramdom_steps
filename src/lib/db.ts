@@ -192,29 +192,82 @@ export const dbService = {
     const results = await db.results.toArray();
     const sessions = await db.sessions.toArray();
     const apiConfigs = await db.apiConfigs.toArray();
+    const customVariables = await db.customVariables.toArray();
 
     return {
       templates,
       results,
       sessions,
       apiConfigs,
+      customVariables,
       exportDate: new Date().toISOString(),
-      version: '1.0.0'
+      version: '1.1.0'
     };
   },
 
   async importData(data: any) {
-    if (data.templates) {
-      await db.templates.bulkAdd(data.templates);
-    }
-    if (data.results) {
-      await db.results.bulkAdd(data.results);
-    }
-    if (data.sessions) {
-      await db.sessions.bulkAdd(data.sessions);
-    }
-    if (data.apiConfigs) {
-      await db.apiConfigs.bulkAdd(data.apiConfigs);
+    try {
+      // 处理旧版本数据（没有customVariables）
+      if (data.templates) {
+        // 清除重复的ID，避免冲突
+        const cleanTemplates = data.templates.map((t: any) => {
+          const { id, ...rest } = t;
+          return rest;
+        });
+        await db.templates.bulkAdd(cleanTemplates).catch(() => {
+          // 如果有重复，尝试逐个添加
+          cleanTemplates.forEach(async (t: any) => {
+            await db.templates.add(t).catch(() => {});
+          });
+        });
+      }
+      if (data.results) {
+        const cleanResults = data.results.map((r: any) => {
+          const { id, ...rest } = r;
+          return rest;
+        });
+        await db.results.bulkAdd(cleanResults).catch(() => {
+          cleanResults.forEach(async (r: any) => {
+            await db.results.add(r).catch(() => {});
+          });
+        });
+      }
+      if (data.sessions) {
+        const cleanSessions = data.sessions.map((s: any) => {
+          const { id, ...rest } = s;
+          return rest;
+        });
+        await db.sessions.bulkAdd(cleanSessions).catch(() => {
+          cleanSessions.forEach(async (s: any) => {
+            await db.sessions.add(s).catch(() => {});
+          });
+        });
+      }
+      if (data.apiConfigs) {
+        const cleanConfigs = data.apiConfigs.map((c: any) => {
+          const { id, ...rest } = c;
+          return rest;
+        });
+        await db.apiConfigs.bulkAdd(cleanConfigs).catch(() => {
+          cleanConfigs.forEach(async (c: any) => {
+            await db.apiConfigs.add(c).catch(() => {});
+          });
+        });
+      }
+      if (data.customVariables) {
+        const cleanVariables = data.customVariables.map((v: any) => {
+          const { id, ...rest } = v;
+          return rest;
+        });
+        await db.customVariables.bulkAdd(cleanVariables).catch(() => {
+          cleanVariables.forEach(async (v: any) => {
+            await db.customVariables.add(v).catch(() => {});
+          });
+        });
+      }
+    } catch (error) {
+      console.error('导入数据时出错:', error);
+      throw error;
     }
   },
 

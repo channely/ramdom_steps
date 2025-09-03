@@ -36,12 +36,53 @@ const Database: React.FC = () => {
     setIsImporting(true);
     try {
       const text = await importFile.text();
-      const data = JSON.parse(text);
+      let data;
+      
+      // 尝试解析JSON
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        alert('导入失败：文件格式错误，请确保是有效的JSON文件');
+        setIsImporting(false);
+        return;
+      }
+      
+      // 验证数据结构
+      if (!data || typeof data !== 'object') {
+        alert('导入失败：数据结构无效');
+        setIsImporting(false);
+        return;
+      }
+      
+      // 显示数据概览
+      const summary = [];
+      if (data.templates) summary.push(`${data.templates.length} 个模板`);
+      if (data.results) summary.push(`${data.results.length} 个测试结果`);
+      if (data.sessions) summary.push(`${data.sessions.length} 个会话`);
+      if (data.apiConfigs) summary.push(`${data.apiConfigs.length} 个API配置`);
+      if (data.customVariables) summary.push(`${data.customVariables.length} 个自定义变量`);
+      
+      if (summary.length > 0) {
+        const confirmImport = confirm(
+          `即将导入:\n${summary.join('\n')}\n\n是否继续？`
+        );
+        
+        if (!confirmImport) {
+          setIsImporting(false);
+          return;
+        }
+      }
+      
+      // 执行导入
       await dbService.importData(data);
-      alert('数据导入成功');
+      alert(`数据导入成功！\n已导入：${summary.join(', ')}`);
       setImportFile(null);
+      
+      // 刷新页面以显示新数据
+      window.location.reload();
     } catch (error) {
-      alert('导入失败：文件格式错误');
+      console.error('导入错误:', error);
+      alert(`导入失败：${error instanceof Error ? error.message : '未知错误'}`);
     }
     setIsImporting(false);
   };
@@ -82,6 +123,7 @@ const Database: React.FC = () => {
                 <li>• 测试结果记录</li>
                 <li>• 测试会话历史</li>
                 <li>• API配置信息</li>
+                <li>• 自定义变量数据</li>
               </ul>
             </div>
             <Button onClick={handleExport} loading={isExporting} className="w-full">
