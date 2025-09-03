@@ -5,7 +5,7 @@ import Input from "./ui/Input";
 import Select from "./ui/Select";
 import Badge from "./ui/Badge";
 import VariableSelector from "./VariableSelector";
-import type { TestTemplate, TemplateVariable } from "../types";
+import type { TestTemplate } from "../types";
 import { ATTACK_CATEGORIES } from "../types";
 import { dbService } from "../lib/db";
 import { variableDataGenerator } from "../services/variableDataGenerator";
