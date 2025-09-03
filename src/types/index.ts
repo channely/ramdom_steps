@@ -10,24 +10,13 @@ export interface TestTemplate {
   template: string;
   variables: TemplateVariable[];  // 保持向后兼容
   
-  // 简化的变量管理
+  // 极简的变量管理：只有两种类型
   templateVariables?: {
-    // 复用的全局变量（只记录名称，值从全局获取）
-    reused?: string[];
-    // 定制的变量（基于全局变量克隆并修改）
-    customized?: {
-      [variableName: string]: {
-        description: string;
-        values: string[];
-        baseFrom?: string;  // 基于哪个全局变量定制
-      };
-    };
-    // 局部变量（完全私有）
-    local?: {
-      [variableName: string]: {
-        description: string;
-        values: string[];
-      };
+    // 全局复用变量（自动匹配，只读）
+    global?: string[];  // 只记录变量名，值从全局获取
+    // 私有专用变量（用户自定义）
+    private?: {
+      [variableName: string]: string[];  // 变量名 -> 枚举值数组
     };
   };
   

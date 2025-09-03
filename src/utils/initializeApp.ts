@@ -2,6 +2,8 @@ import { dbService } from '../lib/db';
 import initialTemplates from '../data/initialTemplates';
 import advancedTemplates from '../data/advancedTemplates';
 import { loadCustomVariablesToGenerator } from './loadCustomVariables';
+import { variableDataGenerator } from '../services/variableDataGenerator';
+import type { TestTemplate } from '../types';
 
 export const initializeApp = async () => {
   try {
@@ -68,10 +70,69 @@ export const initializeApp = async () => {
     const customVarCount = await loadCustomVariablesToGenerator();
     console.log(`加载了 ${customVarCount} 个自定义变量到生成器`);
 
+    // 自动迁移现有模板的变量配置
+    await migrateTemplateVariables();
+
     return true;
   } catch (error) {
     console.error('应用初始化失败:', error);
     return false;
+  }
+};
+
+// 自动迁移模板变量配置
+const migrateTemplateVariables = async () => {
+  try {
+    const templates = await dbService.getAllTemplates();
+    let migratedCount = 0;
+    
+    for (const template of templates) {
+      // 跳过已经配置的模板
+      if (template.templateVariables?.global || template.templateVariables?.private) {
+        continue;
+      }
+      
+      // 检测模板中的变量
+      const variablePattern = /\{([^}]+)\}/g;
+      const detectedVars = new Set<string>();
+      let match;
+      
+      while ((match = variablePattern.exec(template.template)) !== null) {
+        detectedVars.add(match[1]);
+      }
+      
+      if (detectedVars.size === 0) continue;
+      
+      // 自动分类变量
+      const globalVars: string[] = [];
+      const privateVars: Record<string, string[]> = {};
+      
+      detectedVars.forEach(varName => {
+        if (variableDataGenerator.hasVariable(varName)) {
+          globalVars.push(varName);
+        } else {
+          // 私有变量，提供默认值
+          privateVars[varName] = [`示例${varName}值`];
+        }
+      });
+      
+      // 更新模板
+      await dbService.updateTemplate(template.id!, {
+        ...template,
+        templateVariables: {
+          global: globalVars.length > 0 ? globalVars : undefined,
+          private: Object.keys(privateVars).length > 0 ? privateVars : undefined
+        }
+      });
+      
+      migratedCount++;
+    }
+    
+    if (migratedCount > 0) {
+      console.log(`成功迁移 ${migratedCount} 个模板的变量配置`);
+    }
+  } catch (error) {
+    console.error('模板变量迁移失败:', error);
   }
 };
 

@@ -86,20 +86,20 @@ class PromptGenerator {
     let result = template;
     const processedVariables = new Set<string>();
 
-    // 处理新的简化变量结构
+    // 处理极简的变量结构
     if (fullTemplate?.templateVariables) {
-      const { reused, customized, local } = fullTemplate.templateVariables;
+      const { global, private: privateVars } = fullTemplate.templateVariables;
       
-      // 1. 处理局部变量（优先级最高）
-      if (local) {
-        Object.entries(local).forEach(([varName, varConfig]) => {
+      // 1. 处理私有变量（优先级高）
+      if (privateVars) {
+        Object.entries(privateVars).forEach(([varName, values]) => {
           const placeholder = `{${varName}}`;
           if (result.includes(placeholder)) {
             let value = '';
             
-            // 从局部变量值中随机选择一个
-            if (varConfig.values && varConfig.values.length > 0) {
-              const validValues = varConfig.values.filter(v => v && v.trim());
+            // 从私有变量值中随机选择一个
+            if (values && values.length > 0) {
+              const validValues = values.filter(v => v && v.trim());
               if (validValues.length > 0) {
                 value = validValues[Math.floor(Math.random() * validValues.length)];
               }
@@ -116,42 +116,9 @@ class PromptGenerator {
         });
       }
       
-      // 2. 处理定制变量
-      if (customized) {
-        Object.entries(customized).forEach(([varName, varConfig]) => {
-          if (!processedVariables.has(varName)) {
-            const placeholder = `{${varName}}`;
-            if (result.includes(placeholder)) {
-              let value = '';
-              
-              // 从定制变量值中随机选择一个
-              if (varConfig.values && varConfig.values.length > 0) {
-                const validValues = varConfig.values.filter(v => v && v.trim());
-                if (validValues.length > 0) {
-                  value = validValues[Math.floor(Math.random() * validValues.length)];
-                }
-              }
-              
-              // 如果没有值但有基础变量，从全局获取
-              if (!value && varConfig.baseFrom && variableDataGenerator.hasVariable(varConfig.baseFrom)) {
-                value = variableDataGenerator.getRandomValue(varConfig.baseFrom);
-              }
-              
-              // 如果还是没有值，使用占位符
-              if (!value) {
-                value = `[${varName}]`;
-              }
-              
-              result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
-              processedVariables.add(varName);
-            }
-          }
-        });
-      }
-      
-      // 3. 处理复用的全局变量
-      if (reused) {
-        reused.forEach(varName => {
+      // 2. 处理全局复用变量
+      if (global) {
+        global.forEach(varName => {
           if (!processedVariables.has(varName)) {
             const placeholder = `{${varName}}`;
             if (result.includes(placeholder) && variableDataGenerator.hasVariable(varName)) {

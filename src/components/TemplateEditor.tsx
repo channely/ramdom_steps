@@ -1,14 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Copy, RefreshCw, AlertCircle } from 'lucide-react';
-import Button from './ui/Button';
-import Input from './ui/Input';
-import Select from './ui/Select';
-import Badge from './ui/Badge';
-import VariableSelector from './VariableSelector';
-import type { TestTemplate, TemplateVariable } from '../types';
-import { ATTACK_CATEGORIES } from '../types';
-import { dbService } from '../lib/db';
-import { variableDataGenerator } from '../services/variableDataGenerator';
+import React, { useState, useEffect, useRef } from "react";
+import { X, Plus, Trash2, Copy, RefreshCw, AlertCircle } from "lucide-react";
+import Button from "./ui/Button";
+import Input from "./ui/Input";
+import Select from "./ui/Select";
+import Badge from "./ui/Badge";
+import VariableSelector from "./VariableSelector";
+import type { TestTemplate, TemplateVariable } from "../types";
+import { ATTACK_CATEGORIES } from "../types";
+import { dbService } from "../lib/db";
+import { variableDataGenerator } from "../services/variableDataGenerator";
 
 interface TemplateEditorProps {
   template?: TestTemplate | null;
@@ -16,30 +16,37 @@ interface TemplateEditorProps {
   onSave: () => void;
 }
 
-const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSave }) => {
+const TemplateEditor: React.FC<TemplateEditorProps> = ({
+  template,
+  onClose,
+  onSave,
+}) => {
   const templateTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [formData, setFormData] = useState<Partial<TestTemplate>>({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     category: ATTACK_CATEGORIES[0].id,
     subcategory: ATTACK_CATEGORIES[0].subcategories[0],
-    riskLevel: 'medium',
-    template: '',
+    riskLevel: "medium",
+    template: "",
     variables: [],
     tags: [],
     successCriteria: {
-      type: 'keywords',
+      type: "keywords",
       keywords: [],
       threshold: 0.5,
     },
-    version: '1.0.0',
+    version: "1.0.0",
   });
 
-  const [tagInput, setTagInput] = useState('');
-  const [keywordInput, setKeywordInput] = useState('');
-  const [detectedVariables, setDetectedVariables] = useState<string[]>([]);
-  const [variableMode, setVariableMode] = useState<'reused' | 'customized' | 'local'>('reused');
-  const [selectedGlobalVar, setSelectedGlobalVar] = useState<string>('');
+  const [tagInput, setTagInput] = useState("");
+  const [keywordInput, setKeywordInput] = useState("");
+  const [detectedVariables, setDetectedVariables] = useState<
+    {
+      name: string;
+      isGlobal: boolean;
+    }[]
+  >([]);
 
   useEffect(() => {
     if (template) {
@@ -47,127 +54,108 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
     }
   }, [template]);
 
-  // 检测模板中的变量
+  // 检测模板中的变量并自动分类
   useEffect(() => {
     const variablePattern = /\{([^}]+)\}/g;
-    const detected: string[] = [];
+    const detected: { name: string; isGlobal: boolean }[] = [];
+    const seen = new Set<string>();
     let match;
-    
-    while ((match = variablePattern.exec(formData.template || '')) !== null) {
+
+    while ((match = variablePattern.exec(formData.template || "")) !== null) {
       const varName = match[1];
-      if (!detected.includes(varName)) {
-        detected.push(varName);
+      if (!seen.has(varName)) {
+        seen.add(varName);
+        // 检查是否是全局变量
+        const isGlobal = variableDataGenerator.hasVariable(varName);
+        detected.push({ name: varName, isGlobal });
       }
     }
-    
+
     setDetectedVariables(detected);
+
+    // 自动配置变量
+    const globalVars = detected.filter((v) => v.isGlobal).map((v) => v.name);
+    const privateVars = detected.filter((v) => !v.isGlobal).map((v) => v.name);
+
+    const newTemplateVariables = {
+      global: globalVars,
+      private: formData.templateVariables?.private || {},
+    };
+
+    // 为新检测到的私有变量初始化空数组
+    privateVars.forEach((varName) => {
+      if (!newTemplateVariables.private![varName]) {
+        newTemplateVariables.private![varName] = [""];
+      }
+    });
+
+    // 清理不存在的私有变量
+    if (newTemplateVariables.private) {
+      Object.keys(newTemplateVariables.private).forEach((varName) => {
+        if (!privateVars.includes(varName)) {
+          delete newTemplateVariables.private![varName];
+        }
+      });
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      templateVariables: newTemplateVariables,
+    }));
   }, [formData.template]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (template?.id) {
       await dbService.updateTemplate(template.id, formData);
     } else {
-      await dbService.addTemplate(formData as Omit<TestTemplate, 'id' | 'createdAt' | 'lastUpdated'>);
+      await dbService.addTemplate(
+        formData as Omit<TestTemplate, "id" | "createdAt" | "lastUpdated">,
+      );
     }
-    
+
     onSave();
   };
 
-  // 添加变量到指定类型
-  const addTemplateVariable = (varName: string, mode: 'reused' | 'customized' | 'local') => {
-    const templateVars = formData.templateVariables || { reused: [], customized: {}, local: {} };
-    
-    if (mode === 'reused') {
-      if (!templateVars.reused?.includes(varName)) {
-        templateVars.reused = [...(templateVars.reused || []), varName];
-      }
-    } else if (mode === 'customized') {
-      if (!templateVars.customized) templateVars.customized = {};
-      if (!templateVars.customized[varName]) {
-        // 从全局变量克隆
-        const globalValues = variableDataGenerator.hasVariable(varName) 
-          ? [variableDataGenerator.getRandomValue(varName)] 
-          : [''];
-        templateVars.customized[varName] = {
-          description: varName.replace(/_/g, ' '),
-          values: globalValues,
-          baseFrom: variableDataGenerator.hasVariable(varName) ? varName : undefined
-        };
-      }
-    } else if (mode === 'local') {
-      if (!templateVars.local) templateVars.local = {};
-      if (!templateVars.local[varName]) {
-        templateVars.local[varName] = {
-          description: varName.replace(/_/g, ' '),
-          values: ['']
-        };
-      }
-    }
-    
-    setFormData({ ...formData, templateVariables: templateVars });
-  };
-
-  // 移除变量
-  const removeTemplateVariable = (varName: string, mode: 'reused' | 'customized' | 'local') => {
+  // 更新私有变量的值
+  const updatePrivateVariableValues = (varName: string, values: string[]) => {
     const templateVars = { ...formData.templateVariables };
-    
-    if (mode === 'reused' && templateVars.reused) {
-      templateVars.reused = templateVars.reused.filter(v => v !== varName);
-    } else if (mode === 'customized' && templateVars.customized) {
-      delete templateVars.customized[varName];
-    } else if (mode === 'local' && templateVars.local) {
-      delete templateVars.local[varName];
-    }
-    
+    if (!templateVars.private) templateVars.private = {};
+    templateVars.private[varName] = values;
     setFormData({ ...formData, templateVariables: templateVars });
   };
 
-  // 更新定制或局部变量的值
-  const updateVariableValues = (varName: string, values: string[], mode: 'customized' | 'local') => {
-    const templateVars = { ...formData.templateVariables };
-    
-    if (mode === 'customized' && templateVars.customized?.[varName]) {
-      templateVars.customized[varName].values = values;
-    } else if (mode === 'local' && templateVars.local?.[varName]) {
-      templateVars.local[varName].values = values;
+  // 获取全局变量的示例值（只读展示）
+  const getGlobalVariableValues = (varName: string): string[] => {
+    if (!variableDataGenerator.hasVariable(varName)) return [];
+    // 获取几个示例值用于展示
+    const samples = new Set<string>();
+    for (let i = 0; i < 5 && samples.size < 3; i++) {
+      samples.add(variableDataGenerator.getRandomValue(varName));
     }
-    
-    setFormData({ ...formData, templateVariables: templateVars });
+    return Array.from(samples);
   };
-
-  // 获取所有已配置的变量
-  const getAllConfiguredVariables = () => {
-    const vars: string[] = [];
-    const templateVars = formData.templateVariables;
-    
-    if (templateVars?.reused) vars.push(...templateVars.reused);
-    if (templateVars?.customized) vars.push(...Object.keys(templateVars.customized));
-    if (templateVars?.local) vars.push(...Object.keys(templateVars.local));
-    
-    return vars;
-  };
-
-  const configuredVars = getAllConfiguredVariables();
-  const missingVars = detectedVariables.filter(v => !configuredVars.includes(v));
 
   const addVariable = () => {
     const newVariable: TemplateVariable = {
-      name: '',
-      type: 'text',
-      label: '',
+      name: "",
+      type: "text",
+      label: "",
       required: false,
-      defaultValue: '',
+      defaultValue: "",
     };
-    
+
     setFormData({
       ...formData,
       variables: [...(formData.variables || []), newVariable],
     });
   };
 
-  const updateVariable = (index: number, updates: Partial<TemplateVariable>) => {
+  const updateVariable = (
+    index: number,
+    updates: Partial<TemplateVariable>,
+  ) => {
     const variables = [...(formData.variables || [])];
     variables[index] = { ...variables[index], ...updates };
     setFormData({ ...formData, variables });
@@ -185,7 +173,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
         ...formData,
         tags: [...(formData.tags || []), tagInput.trim()],
       });
-      setTagInput('');
+      setTagInput("");
     }
   };
 
@@ -201,10 +189,13 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
         ...formData,
         successCriteria: {
           ...formData.successCriteria!,
-          keywords: [...(formData.successCriteria?.keywords || []), keywordInput.trim()],
+          keywords: [
+            ...(formData.successCriteria?.keywords || []),
+            keywordInput.trim(),
+          ],
         },
       });
-      setKeywordInput('');
+      setKeywordInput("");
     }
   };
 
@@ -220,33 +211,45 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
     });
   };
 
-  const selectedCategory = ATTACK_CATEGORIES.find(c => c.id === formData.category);
+  const selectedCategory = ATTACK_CATEGORIES.find(
+    (c) => c.id === formData.category,
+  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-dark-surface border border-dark-border rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-dark-border">
           <h2 className="text-xl font-semibold text-white">
-            {template ? '编辑模板' : '创建新模板'}
+            {template ? "编辑模板" : "创建新模板"}
           </h2>
-          <button onClick={onClose} className="p-2 hover:bg-dark-border rounded">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-dark-border rounded"
+          >
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+        <form
+          onSubmit={handleSubmit}
+          className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]"
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Input
               label="模板名称"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               required
             />
 
             <Input
               label="版本号"
               value={formData.version}
-              onChange={(e) => setFormData({ ...formData, version: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, version: e.target.value })
+              }
               required
             />
 
@@ -254,7 +257,9 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
               <Input
                 label="描述"
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
                 required
               />
             </div>
@@ -263,32 +268,46 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
               label="攻击类别"
               value={formData.category}
               onChange={(e) => {
-                const category = ATTACK_CATEGORIES.find(c => c.id === e.target.value);
+                const category = ATTACK_CATEGORIES.find(
+                  (c) => c.id === e.target.value,
+                );
                 setFormData({
                   ...formData,
                   category: e.target.value,
-                  subcategory: category?.subcategories[0] || '',
+                  subcategory: category?.subcategories[0] || "",
                 });
               }}
-              options={ATTACK_CATEGORIES.map(c => ({ value: c.id, label: c.name }))}
+              options={ATTACK_CATEGORIES.map((c) => ({
+                value: c.id,
+                label: c.name,
+              }))}
             />
 
             <Select
               label="子类别"
               value={formData.subcategory}
-              onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
-              options={selectedCategory?.subcategories.map(s => ({ value: s, label: s })) || []}
+              onChange={(e) =>
+                setFormData({ ...formData, subcategory: e.target.value })
+              }
+              options={
+                selectedCategory?.subcategories.map((s) => ({
+                  value: s,
+                  label: s,
+                })) || []
+              }
             />
 
             <Select
               label="风险等级"
               value={formData.riskLevel}
-              onChange={(e) => setFormData({ ...formData, riskLevel: e.target.value as any })}
+              onChange={(e) =>
+                setFormData({ ...formData, riskLevel: e.target.value as any })
+              }
               options={[
-                { value: 'low', label: '低风险' },
-                { value: 'medium', label: '中风险' },
-                { value: 'high', label: '高风险' },
-                { value: 'critical', label: '严重风险' },
+                { value: "low", label: "低风险" },
+                { value: "medium", label: "中风险" },
+                { value: "high", label: "高风险" },
+                { value: "critical", label: "严重风险" },
               ]}
             />
 
@@ -300,19 +319,23 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
                 <div className="flex items-center gap-2">
                   <VariableSelector
                     onInsert={(variable) => {
-                    const textarea = templateTextareaRef.current;
-                    if (textarea) {
-                      const start = textarea.selectionStart;
-                      const end = textarea.selectionEnd;
-                      const text = formData.template || '';
-                      const newText = text.substring(0, start) + variable + text.substring(end);
-                      setFormData({ ...formData, template: newText });
-                      // 设置光标位置到插入变量后
-                      setTimeout(() => {
-                        textarea.selectionStart = textarea.selectionEnd = start + variable.length;
-                        textarea.focus();
-                      }, 0);
-                    }
+                      const textarea = templateTextareaRef.current;
+                      if (textarea) {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const text = formData.template || "";
+                        const newText =
+                          text.substring(0, start) +
+                          variable +
+                          text.substring(end);
+                        setFormData({ ...formData, template: newText });
+                        // 设置光标位置到插入变量后
+                        setTimeout(() => {
+                          textarea.selectionStart = textarea.selectionEnd =
+                            start + variable.length;
+                          textarea.focus();
+                        }, 0);
+                      }
                     }}
                   />
                 </div>
@@ -320,7 +343,9 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
               <textarea
                 ref={templateTextareaRef}
                 value={formData.template}
-                onChange={(e) => setFormData({ ...formData, template: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, template: e.target.value })
+                }
                 className="w-full h-32 px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-accent-red font-mono text-sm"
                 placeholder="输入模板内容，使用 {变量名} 格式插入变量"
                 required
@@ -328,266 +353,144 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
             </div>
 
             <div className="md:col-span-2">
-              <label className="text-sm font-medium text-gray-200 mb-3 block">模板变量管理</label>
-              
-              {/* 缺失变量提示 */}
-              {missingVars.length > 0 && (
-                <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-600/50 rounded-lg">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-yellow-500 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm text-yellow-400 mb-2">检测到未配置的变量：</p>
-                      <div className="flex flex-wrap gap-2">
-                        {missingVars.map(varName => (
-                          <div key={varName} className="flex items-center gap-1">
-                            <Badge size="sm" variant="warning">{varName}</Badge>
-                            <div className="flex gap-1">
-                              <button
-                                type="button"
-                                onClick={() => addTemplateVariable(varName, 'reused')}
-                                className="text-xs px-2 py-0.5 bg-dark-surface hover:bg-dark-border rounded"
-                                title="复用全局变量"
-                              >
-                                复用
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => addTemplateVariable(varName, 'customized')}
-                                className="text-xs px-2 py-0.5 bg-dark-surface hover:bg-dark-border rounded"
-                                title="定制全局变量"
-                              >
-                                定制
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => addTemplateVariable(varName, 'local')}
-                                className="text-xs px-2 py-0.5 bg-dark-surface hover:bg-dark-border rounded"
-                                title="创建局部变量"
-                              >
-                                局部
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+              <label className="text-sm font-medium text-gray-200 mb-3 block">
+                模板变量配置
+                <span className="text-xs text-gray-500 ml-2">
+                  （变量在模板内容中用 {`{变量名}`} 声明）
+                </span>
+              </label>
+
+              {/* 变量列表 */}
+              {detectedVariables.length > 0 ? (
+                <div className="space-y-3">
+                  {detectedVariables.map(({ name: varName, isGlobal }) => (
+                    <div key={varName} className="p-3 bg-dark-bg rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <code className="text-accent-red font-mono">{`{${varName}}`}</code>
+                          <Badge
+                            size="sm"
+                            variant={isGlobal ? "info" : "warning"}
+                          >
+                            {isGlobal ? "全局复用" : "私有专用"}
+                          </Badge>
+                        </div>
                       </div>
+
+                      {isGlobal ? (
+                        // 全局变量 - 只读展示
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-500 mb-1">
+                            示例值（不可修改，随机生成）：
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {getGlobalVariableValues(varName).map(
+                              (value, idx) => (
+                                <Badge key={idx} variant="secondary" size="sm">
+                                  {value}
+                                </Badge>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        // 私有变量 - 可编辑
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-500 mb-1">
+                            枚举值（必须至少填写一个）：
+                          </p>
+                          {(
+                            formData.templateVariables?.private?.[varName] || [
+                              "",
+                            ]
+                          ).map((value, idx) => (
+                            <div key={idx} className="flex gap-1">
+                              <Input
+                                size="sm"
+                                value={value}
+                                onChange={(e) => {
+                                  const currentValues = formData
+                                    .templateVariables?.private?.[varName] || [
+                                    "",
+                                  ];
+                                  const newValues = [...currentValues];
+                                  newValues[idx] = e.target.value;
+                                  updatePrivateVariableValues(
+                                    varName,
+                                    newValues,
+                                  );
+                                }}
+                                placeholder="输入变量值"
+                                required
+                              />
+                              {(formData.templateVariables?.private?.[varName]
+                                ?.length || 0) > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentValues =
+                                      formData.templateVariables?.private?.[
+                                        varName
+                                      ] || [];
+                                    const newValues = currentValues.filter(
+                                      (_, i) => i !== idx,
+                                    );
+                                    updatePrivateVariableValues(
+                                      varName,
+                                      newValues,
+                                    );
+                                  }}
+                                  className="p-1 hover:bg-dark-border rounded"
+                                >
+                                  <X className="w-3 h-3 text-gray-400" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const currentValues = formData.templateVariables
+                                ?.private?.[varName] || [""];
+                              updatePrivateVariableValues(varName, [
+                                ...currentValues,
+                                "",
+                              ]);
+                            }}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            添加值
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 bg-dark-bg rounded-lg text-center text-gray-400 text-sm">
+                  模板中暂无变量，在模板内容中使用 {`{varName}`} 格式声明变量
                 </div>
               )}
-
-              {/* 变量配置区 */}
-              <div className="space-y-4">
-                {/* 复用的全局变量 */}
-                {formData.templateVariables?.reused && formData.templateVariables.reused.length > 0 && (
-                  <div className="p-3 bg-dark-bg rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                      <Copy className="w-4 h-4" />
-                      复用全局变量
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {formData.templateVariables.reused.map(varName => (
-                        <div key={varName} className="flex items-center gap-1">
-                          <Badge variant="info">{varName}</Badge>
-                          <button
-                            type="button"
-                            onClick={() => removeTemplateVariable(varName, 'reused')}
-                            className="p-0.5 hover:bg-dark-border rounded"
-                          >
-                            <X className="w-3 h-3 text-gray-400" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 定制的变量 */}
-                {formData.templateVariables?.customized && Object.keys(formData.templateVariables.customized).length > 0 && (
-                  <div className="p-3 bg-dark-bg rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                      <RefreshCw className="w-4 h-4" />
-                      定制变量
-                    </h4>
-                    <div className="space-y-2">
-                      {Object.entries(formData.templateVariables.customized).map(([varName, varConfig]) => (
-                        <div key={varName} className="border border-dark-border rounded p-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant="warning">{varName}</Badge>
-                            {varConfig.baseFrom && (
-                              <span className="text-xs text-gray-500">基于: {varConfig.baseFrom}</span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removeTemplateVariable(varName, 'customized')}
-                              className="p-0.5 hover:bg-dark-border rounded"
-                            >
-                              <X className="w-3 h-3 text-gray-400" />
-                            </button>
-                          </div>
-                          <div className="space-y-1">
-                            {varConfig.values.map((value, idx) => (
-                              <div key={idx} className="flex gap-1">
-                                <Input
-                                  size="sm"
-                                  value={value}
-                                  onChange={(e) => {
-                                    const newValues = [...varConfig.values];
-                                    newValues[idx] = e.target.value;
-                                    updateVariableValues(varName, newValues, 'customized');
-                                  }}
-                                  placeholder="输入值"
-                                />
-                                {varConfig.values.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newValues = varConfig.values.filter((_, i) => i !== idx);
-                                      updateVariableValues(varName, newValues, 'customized');
-                                    }}
-                                    className="p-1 hover:bg-dark-border rounded"
-                                  >
-                                    <X className="w-3 h-3 text-gray-400" />
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                const newValues = [...varConfig.values, ''];
-                                updateVariableValues(varName, newValues, 'customized');
-                              }}
-                            >
-                              <Plus className="w-3 h-3 mr-1" />
-                              添加值
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 局部变量 */}
-                {formData.templateVariables?.local && Object.keys(formData.templateVariables.local).length > 0 && (
-                  <div className="p-3 bg-dark-bg rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      局部变量
-                    </h4>
-                    <div className="space-y-2">
-                      {Object.entries(formData.templateVariables.local).map(([varName, varConfig]) => (
-                        <div key={varName} className="border border-dark-border rounded p-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <Badge variant="success">{varName}</Badge>
-                            <button
-                              type="button"
-                              onClick={() => removeTemplateVariable(varName, 'local')}
-                              className="p-0.5 hover:bg-dark-border rounded"
-                            >
-                              <X className="w-3 h-3 text-gray-400" />
-                            </button>
-                          </div>
-                          <div className="space-y-1">
-                            {varConfig.values.map((value, idx) => (
-                              <div key={idx} className="flex gap-1">
-                                <Input
-                                  size="sm"
-                                  value={value}
-                                  onChange={(e) => {
-                                    const newValues = [...varConfig.values];
-                                    newValues[idx] = e.target.value;
-                                    updateVariableValues(varName, newValues, 'local');
-                                  }}
-                                  placeholder="输入值"
-                                />
-                                {varConfig.values.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newValues = varConfig.values.filter((_, i) => i !== idx);
-                                      updateVariableValues(varName, newValues, 'local');
-                                    }}
-                                    className="p-1 hover:bg-dark-border rounded"
-                                  >
-                                    <X className="w-3 h-3 text-gray-400" />
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                const newValues = [...varConfig.values, ''];
-                                updateVariableValues(varName, newValues, 'local');
-                              }}
-                            >
-                              <Plus className="w-3 h-3 mr-1" />
-                              添加值
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 快速添加变量 */}
-                <div className="flex items-center gap-2">
-                  <Input
-                    size="sm"
-                    placeholder="输入变量名"
-                    value={selectedGlobalVar}
-                    onChange={(e) => setSelectedGlobalVar(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && selectedGlobalVar) {
-                        e.preventDefault();
-                        addTemplateVariable(selectedGlobalVar, variableMode);
-                        setSelectedGlobalVar('');
-                      }
-                    }}
-                  />
-                  <Select
-                    size="sm"
-                    value={variableMode}
-                    onChange={(e) => setVariableMode(e.target.value as any)}
-                    options={[
-                      { value: 'reused', label: '复用' },
-                      { value: 'customized', label: '定制' },
-                      { value: 'local', label: '局部' },
-                    ]}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => {
-                      if (selectedGlobalVar) {
-                        addTemplateVariable(selectedGlobalVar, variableMode);
-                        setSelectedGlobalVar('');
-                      }
-                    }}
-                    disabled={!selectedGlobalVar}
-                  >
-                    添加
-                  </Button>
-                </div>
-              </div>
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-200 mb-2">标签</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">
+                标签
+              </label>
               <div className="flex gap-2 mb-2">
                 <Input
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   placeholder="输入标签"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                  onKeyPress={(e) =>
+                    e.key === "Enter" && (e.preventDefault(), addTag())
+                  }
                 />
-                <Button type="button" size="sm" onClick={addTag}>添加</Button>
+                <Button type="button" size="sm" onClick={addTag}>
+                  添加
+                </Button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {formData.tags?.map((tag, index) => (
@@ -617,9 +520,13 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
                   value={keywordInput}
                   onChange={(e) => setKeywordInput(e.target.value)}
                   placeholder="输入关键词"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
+                  onKeyPress={(e) =>
+                    e.key === "Enter" && (e.preventDefault(), addKeyword())
+                  }
                 />
-                <Button type="button" size="sm" onClick={addKeyword}>添加</Button>
+                <Button type="button" size="sm" onClick={addKeyword}>
+                  添加
+                </Button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {formData.successCriteria?.keywords?.map((keyword, index) => (
@@ -645,9 +552,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
             <Button type="button" variant="ghost" onClick={onClose}>
               取消
             </Button>
-            <Button type="submit">
-              {template ? '保存更改' : '创建模板'}
-            </Button>
+            <Button type="submit">{template ? "保存更改" : "创建模板"}</Button>
           </div>
         </form>
       </div>
