@@ -27,6 +27,13 @@ export class PromptSecurityDB extends Dexie {
       templates: '++id, category, subcategory, name, riskLevel, *tags, createdAt, lastUpdated',
       results: '++id, templateId, sessionId, timestamp, isVulnerable, status',
       sessions: '++id, createdAt, status',
+      apiConfigs: '++id, name, provider, isDefault, createdAt'
+    });
+
+    this.version(2).stores({
+      templates: '++id, category, subcategory, name, riskLevel, *tags, createdAt, lastUpdated',
+      results: '++id, templateId, sessionId, timestamp, isVulnerable, status',
+      sessions: '++id, createdAt, status',
       apiConfigs: '++id, name, provider, isDefault, createdAt',
       customVariables: '++id, name, category, isSystem, createdAt'
     });
@@ -220,7 +227,8 @@ export const dbService = {
   },
 
   async getAllCustomVariables() {
-    return await db.customVariables.where('isSystem').equals(0).toArray();
+    const allVariables = await db.customVariables.toArray();
+    return allVariables.filter(v => v.isSystem === false);
   },
 
   async getCustomVariable(id: string) {

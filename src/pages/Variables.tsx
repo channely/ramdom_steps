@@ -42,14 +42,22 @@ const Variables: React.FC = () => {
   }, []);
 
   const loadVariables = async () => {
-    // 从数据库加载自定义变量
-    const customVars = await dbService.getAllCustomVariables();
-    
-    // 获取系统预定义变量
-    const systemVars = getSystemVariables();
-    
-    // 合并所有变量
-    setVariables([...systemVars, ...customVars]);
+    try {
+      // 从数据库加载自定义变量
+      const customVars = await dbService.getAllCustomVariables();
+      console.log('加载的自定义变量:', customVars);
+      
+      // 获取系统预定义变量
+      const systemVars = getSystemVariables();
+      console.log('系统变量数量:', systemVars.length);
+      
+      // 合并所有变量
+      const allVars = [...systemVars, ...customVars];
+      console.log('总变量数量:', allVars.length);
+      setVariables(allVars);
+    } catch (error) {
+      console.error('加载变量失败:', error);
+    }
   };
 
   const getSystemVariables = (): VariableDefinition[] => {
@@ -189,18 +197,39 @@ const Variables: React.FC = () => {
       return;
     }
 
-    if (isCreating) {
-      await dbService.createCustomVariable(editingVariable);
-    } else {
-      await dbService.updateCustomVariable(editingVariable.id!, editingVariable);
+    // 过滤掉空值
+    const filteredValues = editingVariable.values.filter(v => v && v.trim() !== '');
+    if (filteredValues.length === 0) {
+      alert('请至少提供一个有效的值');
+      return;
     }
 
-    // 更新variableDataGenerator
-    variableDataGenerator.addVariableData(editingVariable.name, editingVariable.values);
+    const variableToSave = {
+      ...editingVariable,
+      values: filteredValues,
+      isSystem: false,
+    };
 
-    setEditingVariable(null);
-    setIsCreating(false);
-    await loadVariables();
+    try {
+      if (isCreating) {
+        console.log('创建新变量:', variableToSave);
+        await dbService.createCustomVariable(variableToSave);
+      } else {
+        console.log('更新变量:', variableToSave);
+        await dbService.updateCustomVariable(editingVariable.id!, variableToSave);
+      }
+
+      // 更新variableDataGenerator
+      variableDataGenerator.addVariableData(variableToSave.name, variableToSave.values);
+
+      setEditingVariable(null);
+      setIsCreating(false);
+      await loadVariables();
+      console.log('变量保存成功，已刷新列表');
+    } catch (error) {
+      console.error('保存变量失败:', error);
+      alert('保存失败，请重试');
+    }
   };
 
   const handlePreview = (variableName: string) => {
