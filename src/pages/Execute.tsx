@@ -195,7 +195,13 @@ const Execute: React.FC = () => {
     setIsPaused(false);
     setIsRunning(true);
     const pendingQueue = testQueue.filter(t => t.status === 'pending');
-    executeQueue(pendingQueue, sessionId);
+    
+    // 获取当前的配置
+    const testConfig = useMockMode ? 
+      { name: '模拟模式', provider: 'mock' as const, endpoint: '', apiKey: 'test', model: 'mock' } :
+      apiConfig!;
+    
+    executeQueue(pendingQueue, sessionId, testConfig);
   };
 
   const resetTesting = () => {
