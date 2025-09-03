@@ -8,7 +8,25 @@ export interface TestTemplate {
   description: string;
   riskLevel: RiskLevel;
   template: string;
-  variables: TemplateVariable[];
+  variables: TemplateVariable[];  // 保持向后兼容
+  
+  // 新增：模板专属变量定义
+  localVariables?: {
+    [variableName: string]: {
+      description: string;
+      values: string[];
+      isOverride?: boolean;  // 是否覆盖同名全局变量
+      source?: 'local' | 'global';  // 变量来源
+    };
+  };
+  
+  // 新增：变量配置选项
+  variableConfig?: {
+    useGlobalVariables?: boolean;  // 是否使用全局变量库（默认true）
+    importedVariables?: string[];  // 明确引入的全局变量名
+    autoDetectVariables?: boolean; // 是否自动检测模板中的变量（默认true）
+  };
+  
   tags: string[];
   successCriteria: SuccessCriteria;
   version: string;

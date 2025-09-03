@@ -49,7 +49,7 @@ class PromptGenerator {
 
     // 为每个变化生成不同的值，确保多样性
     for (let i = 0; i < variations; i++) {
-      const prompt = this.replaceVariables(template.template, template.variables || []);
+      const prompt = this.replaceVariables(template.template, template.variables || [], template);
       // 确保每次生成的prompt都不同
       if (!prompts.includes(prompt)) {
         prompts.push(prompt);
@@ -60,7 +60,7 @@ class PromptGenerator {
     if (useAdditionalTechniques && template.category && this.jailbreakTechniques[template.category]) {
       const techniques = this.jailbreakTechniques[template.category];
       techniques.forEach(technique => {
-        const prompt = this.replaceVariables(technique, template.variables || []);
+        const prompt = this.replaceVariables(technique, template.variables || [], template);
         if (!prompts.includes(prompt)) {
           prompts.push(prompt);
         }
@@ -70,7 +70,7 @@ class PromptGenerator {
     // 如果生成的prompts数量不足，再生成一些（使用模板本身的内容）
     let attempts = 0;
     while (prompts.length < variations && attempts < variations * 3) {
-      const prompt = this.replaceVariables(template.template, template.variables || []);
+      const prompt = this.replaceVariables(template.template, template.variables || [], template);
       if (!prompts.includes(prompt)) {
         prompts.push(prompt);
       }
@@ -82,34 +82,85 @@ class PromptGenerator {
     return randomize ? this.shuffleArray(result) : result;
   }
 
-  private replaceVariables(template: string, variables: TemplateVariable[]): string {
+  private replaceVariables(template: string, variables: TemplateVariable[], fullTemplate?: TestTemplate): string {
     let result = template;
+    const processedVariables = new Set<string>();
 
-    // 首先使用模板定义的变量进行替换
+    // 首先处理模板的本地变量（localVariables）
+    if (fullTemplate?.localVariables) {
+      Object.entries(fullTemplate.localVariables).forEach(([varName, varConfig]) => {
+        const placeholder = `{${varName}}`;
+        if (result.includes(placeholder)) {
+          let value = '';
+          
+          // 从本地变量值中随机选择一个
+          if (varConfig.values && varConfig.values.length > 0) {
+            const validValues = varConfig.values.filter(v => v && v.trim());
+            if (validValues.length > 0) {
+              value = validValues[Math.floor(Math.random() * validValues.length)];
+            }
+          }
+          
+          // 如果没有有效值，且不是覆盖全局变量，尝试从全局获取
+          if (!value && !varConfig.isOverride && variableDataGenerator.hasVariable(varName)) {
+            value = variableDataGenerator.getRandomValue(varName);
+          }
+          
+          // 如果还是没有值，使用占位符
+          if (!value) {
+            value = `[${varName}]`;
+          }
+          
+          result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+          processedVariables.add(varName);
+        }
+      });
+    }
+
+    // 然后处理旧的variables数组（向后兼容）
     variables.forEach(variable => {
-      const placeholder = `{${variable.name}}`;
-      let value = variable.defaultValue || '';
+      if (!processedVariables.has(variable.name)) {
+        const placeholder = `{${variable.name}}`;
+        let value = variable.defaultValue || '';
 
-      // 优先使用变量的options
-      if (variable.options && variable.options.length > 0) {
-        value = variable.options[Math.floor(Math.random() * variable.options.length)];
-      } 
-      // 否则从variableDataGenerator获取
-      else if (variableDataGenerator.hasVariable(variable.name)) {
-        value = variableDataGenerator.getRandomValue(variable.name);
+        // 优先使用变量的options
+        if (variable.options && variable.options.length > 0) {
+          value = variable.options[Math.floor(Math.random() * variable.options.length)];
+        } 
+        // 否则从variableDataGenerator获取
+        else if (variableDataGenerator.hasVariable(variable.name)) {
+          value = variableDataGenerator.getRandomValue(variable.name);
+        }
+
+        // 特殊处理编码类变量
+        if (variable.name === 'encoded_instruction' || variable.name === 'encoded_content') {
+          const contentToEncode = variableDataGenerator.getRandomValue('target_action');
+          value = this.encodeContent(contentToEncode, 'base64');
+        }
+
+        result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+        processedVariables.add(variable.name);
       }
-
-      // 特殊处理编码类变量
-      if (variable.name === 'encoded_instruction' || variable.name === 'encoded_content') {
-        const contentToEncode = variableDataGenerator.getRandomValue('target_action');
-        value = this.encodeContent(contentToEncode, 'base64');
-      }
-
-      result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
     });
 
-    // 然后使用variableDataGenerator替换所有剩余的变量
-    result = variableDataGenerator.replaceAllVariables(result);
+    // 处理导入的全局变量
+    if (fullTemplate?.variableConfig?.importedVariables) {
+      fullTemplate.variableConfig.importedVariables.forEach(varName => {
+        if (!processedVariables.has(varName)) {
+          const placeholder = `{${varName}}`;
+          if (result.includes(placeholder) && variableDataGenerator.hasVariable(varName)) {
+            const value = variableDataGenerator.getRandomValue(varName);
+            result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+            processedVariables.add(varName);
+          }
+        }
+      });
+    }
+
+    // 最后，如果启用了全局变量，使用variableDataGenerator替换所有剩余的变量
+    if (fullTemplate?.variableConfig?.useGlobalVariables !== false) {
+      result = variableDataGenerator.replaceAllVariables(result);
+    }
 
     return result;
   }

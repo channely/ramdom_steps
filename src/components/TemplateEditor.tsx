@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, Settings2 } from 'lucide-react';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Select from './ui/Select';
 import VariableSelector from './VariableSelector';
+import TemplateVariableModal from './TemplateVariableModal';
 import type { TestTemplate, TemplateVariable } from '../types';
 import { ATTACK_CATEGORIES } from '../types';
 import { dbService } from '../lib/db';
@@ -35,6 +36,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
 
   const [tagInput, setTagInput] = useState('');
   const [keywordInput, setKeywordInput] = useState('');
+  const [showVariableModal, setShowVariableModal] = useState(false);
 
   useEffect(() => {
     if (template) {
@@ -199,8 +201,18 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
                 <label className="block text-sm font-medium text-gray-200">
                   模板内容
                 </label>
-                <VariableSelector
-                  onInsert={(variable) => {
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowVariableModal(true)}
+                  >
+                    <Settings2 className="w-4 h-4 mr-1" />
+                    管理变量
+                  </Button>
+                  <VariableSelector
+                    onInsert={(variable) => {
                     const textarea = templateTextareaRef.current;
                     if (textarea) {
                       const start = textarea.selectionStart;
@@ -214,8 +226,9 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
                         textarea.focus();
                       }, 0);
                     }
-                  }}
-                />
+                    }}
+                  />
+                </div>
               </div>
               <textarea
                 ref={templateTextareaRef}
@@ -343,6 +356,17 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({ template, onClose, onSa
           </div>
         </form>
       </div>
+
+      {/* 变量管理弹窗 */}
+      <TemplateVariableModal
+        template={formData}
+        isOpen={showVariableModal}
+        onClose={() => setShowVariableModal(false)}
+        onSave={(updatedTemplate) => {
+          setFormData(updatedTemplate);
+          setShowVariableModal(false);
+        }}
+      />
     </div>
   );
 };
