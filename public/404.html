@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Prompt Security Tester</title>
+    <script type="text/javascript">
+      // Single Page App GitHub Pages redirect workaround
+      // When GitHub Pages receives a request for a path that doesn't exist,
+      // it serves this 404.html page. This script redirects to the main index.html
+      // with the path as a URL parameter, which the app can then parse.
+      
+      var pathSegmentsToKeep = 1; // for /ramdom_steps/
+      
+      var l = window.location;
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
+        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+        l.hash
+      );
+    </script>
+  </head>
+  <body>
+  </body>
+</html>

@@ -10,7 +10,7 @@ import Variables from './pages/Variables';
 
 function App() {
   return (
-    <Router>
+    <Router basename="/ramdom_steps">
       <Layout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
