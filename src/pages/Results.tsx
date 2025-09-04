@@ -148,7 +148,7 @@ const Results: React.FC = () => {
             <p className="text-gray-400">分析和可视化测试结果</p>
           </div>
           <Button onClick={exportResults}>
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="w-4 h-4 flex-shrink-0" />
             导出CSV
           </Button>
         </div>

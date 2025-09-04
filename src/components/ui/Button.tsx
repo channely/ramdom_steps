@@ -37,14 +37,14 @@ const Button: React.FC<ButtonProps> = ({
         ${sizes[size]}
         ${disabled || loading ? 'opacity-50 cursor-not-allowed' : ''}
         rounded-lg font-medium transition-colors
-        flex items-center justify-center space-x-2
+        inline-flex items-center justify-center gap-2 whitespace-nowrap
         ${className}
       `}
       disabled={disabled || loading}
       {...props}
     >
-      {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-      <span>{children}</span>
+      {loading && <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />}
+      {children}
     </button>
   );
 };

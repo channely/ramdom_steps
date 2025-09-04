@@ -115,12 +115,12 @@ const Templates: React.FC = () => {
           </div>
           <div className="flex space-x-3">
             <Button variant="ghost" size="sm" onClick={exportTemplates}>
-              <Download className="w-4 h-4 mr-2" />
+              <Download className="w-4 h-4 flex-shrink-0" />
               导出
             </Button>
             <label className="inline-block">
-              <div className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-lg font-medium bg-transparent hover:bg-dark-border text-gray-300 hover:text-white transition-colors cursor-pointer">
-                <Upload className="w-4 h-4 mr-2" />
+              <div className="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium bg-transparent hover:bg-dark-border text-gray-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap">
+                <Upload className="w-4 h-4 flex-shrink-0" />
                 导入
               </div>
               <input
@@ -134,7 +134,7 @@ const Templates: React.FC = () => {
               setEditingTemplate(null);
               setShowEditor(true);
             }}>
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="w-4 h-4 flex-shrink-0" />
               新建模板
             </Button>
           </div>

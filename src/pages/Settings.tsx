@@ -212,11 +212,11 @@ const Settings: React.FC = () => {
 
               <div className="flex space-x-3">
                 <Button onClick={handleSave}>
-                  <Save className="w-4 h-4 mr-2" />
+                  <Save className="w-4 h-4 flex-shrink-0" />
                   保存配置
                 </Button>
                 <Button variant="secondary" onClick={handleTest} loading={isTesting}>
-                  <TestTube className="w-4 h-4 mr-2" />
+                  <TestTube className="w-4 h-4 flex-shrink-0" />
                   测试连接
                 </Button>
               </div>

@@ -140,7 +140,7 @@ const Database: React.FC = () => {
               </ul>
             </div>
             <Button onClick={handleExport} loading={isExporting} className="w-full">
-              <Download className="w-4 h-4 mr-2" />
+              <Download className="w-4 h-4 flex-shrink-0" />
               导出数据
             </Button>
           </div>
@@ -208,7 +208,7 @@ const Database: React.FC = () => {
             </div>
 
             <Button variant="danger" onClick={handleClearAll}>
-              <Trash2 className="w-4 h-4 mr-2" />
+              <Trash2 className="w-4 h-4 flex-shrink-0" />
               清除所有数据
             </Button>
           </div>

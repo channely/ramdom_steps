@@ -367,7 +367,7 @@ const Variables: React.FC = () => {
                     values: [...editingVariable.values, ''] 
                   })}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
+                  <Plus className="w-4 h-4 flex-shrink-0" />
                   添加值
                 </Button>
               </div>

@@ -91,7 +91,7 @@ const VariableSelector: React.FC<VariableSelectorProps> = ({ onInsert, className
         onClick={() => setIsOpen(!isOpen)}
         title="插入变量"
       >
-        <Variable className="w-4 h-4 mr-2" />
+        <Variable className="w-4 h-4 flex-shrink-0" />
         插入变量
       </Button>
 

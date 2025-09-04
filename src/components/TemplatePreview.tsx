@@ -67,7 +67,7 @@ const TemplatePreview: React.FC<TemplatePreviewProps> = ({ template, onClose }) 
               variant="ghost"
               onClick={generatePreview}
             >
-              <RefreshCw className="w-4 h-4 mr-2" />
+              <RefreshCw className="w-4 h-4 flex-shrink-0" />
               重新生成
             </Button>
             <Button

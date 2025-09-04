@@ -357,7 +357,7 @@ const Execute: React.FC = () => {
                   className="w-full"
                   onClick={() => navigate('/settings')}
                 >
-                  <Settings className="w-4 h-4 mr-2" />
+                  <Settings className="w-4 h-4 flex-shrink-0" />
                   前往设置页面配置
                 </Button>
                 
@@ -410,7 +410,7 @@ const Execute: React.FC = () => {
                       onClick={startTesting} 
                       disabled={selectedTemplates.length === 0 || (!useMockMode && (!apiConfig || !apiConfig.apiKey))}
                     >
-                      <Play className="w-4 h-4 mr-2" />
+                      <Play className="w-4 h-4 flex-shrink-0" />
                       开始测试
                     </Button>
                     {selectedTemplates.length === 0 && (
@@ -424,7 +424,7 @@ const Execute: React.FC = () => {
                 
                 {isRunning && !isPaused && (
                   <Button onClick={pauseTesting} variant="secondary">
-                    <Pause className="w-4 h-4 mr-2" />
+                    <Pause className="w-4 h-4 flex-shrink-0" />
                     暂停测试
                   </Button>
                 )}
@@ -438,7 +438,7 @@ const Execute: React.FC = () => {
                 
                 {(isRunning || isPaused || testQueue.length > 0) && (
                   <Button onClick={resetTesting} variant="danger">
-                    <RotateCcw className="w-4 h-4 mr-2" />
+                    <RotateCcw className="w-4 h-4 flex-shrink-0" />
                     重置
                   </Button>
                 )}
