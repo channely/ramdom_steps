@@ -1,11 +1,10 @@
 import { dbService, type CustomVariable } from '../lib/db';
 import type { TestTemplate } from '../types';
 import { detectTemplateVariables } from '../utils/variableDetector';
-import { variableDataGenerator } from './variableDataGenerator';
 
 export interface ManagedVariable extends CustomVariable {
   templateCount: number;  // 使用此变量的模板数量
-  isBuiltin: boolean;  // 是否为内置变量（存在于variableDataGenerator中）
+  isBuiltin: boolean;  // 是否为内置变量（保留字段，始终为false）
 }
 
 class VariableManagerService {
@@ -37,6 +36,7 @@ class VariableManagerService {
     // 3. 分类并更新或创建变量
     for (const [varName, templateIds] of variableUsageMap.entries()) {
       const templateCount = templateIds.size;
+      // 只根据使用次数判定作用域
       const scope: 'global' | 'private' = templateCount >= 2 ? 'global' : 'private';
       const usedByTemplates = Array.from(templateIds);
       
@@ -49,16 +49,14 @@ class VariableManagerService {
           usedByTemplates
         });
       } else {
-        // 创建新变量（包括原内置变量）
-        let values: string[] = [`示例${varName}值`]; // 默认值
+        // 创建新变量
+        let values: string[] = [];
         let category = 'custom';
         let description = `${scope === 'global' ? '公共' : '私有'}变量`;
         
-        // 如果是原内置变量，使用其预定义的值
-        if (variableDataGenerator.hasVariable(varName)) {
-          values = variableDataGenerator.getAllValues(varName);
-          category = 'builtin';
-          description = varName.replace(/_/g, ' ');
+        // 私有变量初始化为空数组，让用户在模板编辑器中定义
+        if (scope === 'private') {
+          values = [];
         }
         
         await dbService.createCustomVariable({
@@ -113,10 +111,7 @@ class VariableManagerService {
       throw new Error(`变量名 "${variable.name}" 已存在`);
     }
     
-    // 检查是否与内置变量重名
-    if (variableDataGenerator.hasVariable(variable.name)) {
-      throw new Error(`变量名 "${variable.name}" 是内置变量，不能创建同名变量`);
-    }
+    // 不再需要检查内置变量
     
     return await dbService.createCustomVariable({
       ...variable,
@@ -135,11 +130,6 @@ class VariableManagerService {
     }
     
     await dbService.updateCustomVariable(id, updates);
-    
-    // 如果修改了值，需要更新 variableDataGenerator
-    if (updates.values) {
-      variableDataGenerator.addVariableData(variable.name, updates.values);
-    }
   }
   
   /**
@@ -161,49 +151,108 @@ class VariableManagerService {
   
   /**
    * 同步模板变量更新
+   * @param templateId 模板ID
+   * @param oldVars 旧变量列表
+   * @param newVars 新变量列表
+   * @param privateVarValues 私有变量的值（从模板编辑器传入）
    */
-  async syncTemplateVariables(templateId: string, oldVars: string[], newVars: string[]): Promise<void> {
+  async syncTemplateVariables(
+    templateId: string, 
+    oldVars: string[], 
+    newVars: string[],
+    privateVarValues?: Record<string, string[]>
+  ): Promise<void> {
     const removedVars = oldVars.filter(v => !newVars.includes(v));
     const addedVars = newVars.filter(v => !oldVars.includes(v));
     
     const allCustomVars = await dbService.getAllCustomVariables();
+    const allTemplates = await dbService.getAllTemplates();
+    
+    // 统计每个变量的使用情况
+    const varUsageMap = new Map<string, Set<string>>();
+    for (const tpl of allTemplates) {
+      if (tpl.id === templateId) continue; // 跳过当前模板
+      const tplVars = detectTemplateVariables(tpl.template);
+      for (const varName of tplVars) {
+        if (!varUsageMap.has(varName)) {
+          varUsageMap.set(varName, new Set());
+        }
+        if (tpl.id) {
+          varUsageMap.get(varName)!.add(tpl.id);
+        }
+      }
+    }
     
     // 处理移除的变量
     for (const varName of removedVars) {
       const customVar = allCustomVars.find(v => v.name === varName);
       if (customVar && customVar.id) {
-        const newUsedBy = (customVar.usedByTemplates || []).filter(id => id !== templateId);
+        const otherUsage = varUsageMap.get(varName) || new Set();
+        const newUsedBy = Array.from(otherUsage);
         const newScope = newUsedBy.length >= 2 ? 'global' : 'private';
         
-        await dbService.updateCustomVariable(customVar.id, {
-          usedByTemplates: newUsedBy,
-          scope: newScope
-        });
+        if (newUsedBy.length === 0) {
+          // 如果没有其他模板使用，删除该变量
+          await dbService.deleteCustomVariable(customVar.id);
+        } else {
+          await dbService.updateCustomVariable(customVar.id, {
+            usedByTemplates: newUsedBy,
+            scope: newScope
+          });
+        }
       }
     }
     
-    // 处理新增的变量
-    for (const varName of addedVars) {
+    // 处理所有当前变量（包括新增的）
+    for (const varName of newVars) {
       const customVar = allCustomVars.find(v => v.name === varName);
+      const otherUsage = varUsageMap.get(varName) || new Set();
+      const allUsage = new Set([...Array.from(otherUsage), templateId]);
+      const usageCount = allUsage.size;
+      // 只根据使用次数判定作用域，不管是否有预定义值
+      const newScope = usageCount >= 2 ? 'global' : 'private';
       
       if (customVar && customVar.id) {
-        const newUsedBy = [...(customVar.usedByTemplates || []), templateId];
-        const newScope = newUsedBy.length >= 2 ? 'global' : 'private';
-        
-        await dbService.updateCustomVariable(customVar.id, {
-          usedByTemplates: newUsedBy,
+        // 更新现有变量
+        const updates: any = {
+          usedByTemplates: Array.from(allUsage),
           scope: newScope
-        });
-      } else if (!variableDataGenerator.hasVariable(varName)) {
-        // 创建新的私有变量
+        };
+        
+        // 如果是私有变量且提供了值，更新值
+        // 重要：总是保存用户在模板编辑器中输入的值
+        if (newScope === 'private' && privateVarValues && privateVarValues[varName]) {
+          // 过滤掉空值
+          const validValues = privateVarValues[varName].filter(v => v && v.trim());
+          if (validValues.length > 0) {
+            updates.values = validValues;
+            console.log(`[variableManager] Updating ${varName} with user values:`, validValues);
+          }
+        }
+        
+        await dbService.updateCustomVariable(customVar.id, updates);
+      } else {
+        // 创建新变量
+        let values: string[] = [];
+        
+        // 使用模板编辑器中定义的值
+        if (privateVarValues && privateVarValues[varName]) {
+          // 过滤掉空值
+          const validValues = privateVarValues[varName].filter(v => v && v.trim());
+          if (validValues.length > 0) {
+            values = validValues;
+            console.log(`[variableManager] Creating ${varName} with user values:`, validValues);
+          }
+        }
+        
         await dbService.createCustomVariable({
           name: varName,
-          description: '私有变量',
-          values: [`示例${varName}值`],
+          description: newScope === 'global' ? '公共变量' : '私有变量',
+          values,
           category: 'custom',
           isSystem: false,
-          scope: 'private',
-          usedByTemplates: [templateId]
+          scope: newScope,
+          usedByTemplates: Array.from(allUsage)
         });
       }
     }

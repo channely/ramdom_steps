@@ -8,7 +8,6 @@ import VariableSelector from "./VariableSelector";
 import type { TestTemplate } from "../types";
 import { ATTACK_CATEGORIES } from "../types";
 import { dbService } from "../lib/db";
-import { variableDataGenerator } from "../services/variableDataGenerator";
 import { detectTemplateVariables } from "../utils/variableDetector";
 import { variableManager } from "../services/variableManager";
 
@@ -48,17 +47,28 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
       name: string;
       isGlobal: boolean;
       scope?: 'global' | 'private';
+      usageCount?: number;
     }[]
   >([]);
 
   const [previousDetectedVars, setPreviousDetectedVars] = useState<string[]>([]);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
   useEffect(() => {
     if (template) {
-      setFormData(template);
+      // 确保templateVariables被初始化
+      const templateWithVariables = {
+        ...template,
+        templateVariables: template.templateVariables || {
+          global: [],
+          private: {}
+        }
+      };
+      setFormData(templateWithVariables);
       // 初始化已检测的变量
       const initialVars = detectTemplateVariables(template.template);
       setPreviousDetectedVars(initialVars);
+      setIsFirstLoad(true); // 标记为首次加载
     }
   }, [template]);
 
@@ -70,23 +80,43 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
       
       // 从数据库获取所有变量信息
       const allVariables = await dbService.getAllCustomVariables();
+      const allTemplates = await dbService.getAllTemplates();
       const varMap = new Map(allVariables.map(v => [v.name, v]));
       
-      const detected: { name: string; isGlobal: boolean; scope?: 'global' | 'private' }[] = detectedVarNames.map(varName => {
-        const dbVar = varMap.get(varName);
-        if (dbVar) {
-          // 使用数据库中的信息
-          return {
-            name: varName,
-            isGlobal: dbVar.scope === 'global',
-            scope: dbVar.scope
-          };
+      // 统计每个变量被多少个模板使用（包括当前正在编辑的模板）
+      const varUsageCount = new Map<string, number>();
+      
+      // 统计其他模板中的变量使用
+      for (const tpl of allTemplates) {
+        // 跳过当前正在编辑的模板
+        if (template?.id && tpl.id === template.id) continue;
+        
+        const tplVars = detectTemplateVariables(tpl.template);
+        for (const varName of tplVars) {
+          varUsageCount.set(varName, (varUsageCount.get(varName) || 0) + 1);
         }
-        // 如果数据库中没有，检查是否在 variableDataGenerator 中
+      }
+      
+      // 加上当前模板中的变量
+      for (const varName of detectedVarNames) {
+        varUsageCount.set(varName, (varUsageCount.get(varName) || 0) + 1);
+      }
+      
+      const detected: { name: string; isGlobal: boolean; scope?: 'global' | 'private'; usageCount: number }[] = detectedVarNames.map(varName => {
+        const dbVar = varMap.get(varName);
+        const usageCount = varUsageCount.get(varName) || 1;
+        
+        // 重新判定变量类型：
+        // 只根据使用次数判定，不管是否在 variableDataGenerator 中
+        // 如果被2个或以上模板使用，是公共变量
+        // 否则是私有变量（即使有预定义值）
+        const isGlobal = usageCount >= 2;
+        
         return {
           name: varName,
-          isGlobal: variableDataGenerator.hasVariable(varName),
-          scope: variableDataGenerator.hasVariable(varName) ? 'global' : 'private'
+          isGlobal,
+          scope: isGlobal ? 'global' : 'private',
+          usageCount
         };
       });
 
@@ -98,15 +128,45 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
       const newTemplateVariables = {
         global: globalVars,
-        private: formData.templateVariables?.private || {},
+        private: {} as Record<string, string[]>,
       };
 
-      // 为新检测到的私有变量初始化空数组
-      privateVars.forEach((varName) => {
-        if (!newTemplateVariables.private![varName]) {
-          newTemplateVariables.private![varName] = [""];
+      // 为所有私有变量初始化值
+      for (const varName of privateVars) {
+        // 总是从数据库获取值
+        const dbVar = varMap.get(varName);
+        console.log(`[TemplateEditor] Initializing private variable ${varName}:`, {
+          dbVar: dbVar,
+          isFirstLoad,
+          currentTemplatePrivateVars: formData.templateVariables?.private,
+          hasProperty: formData.templateVariables?.private?.hasOwnProperty(varName)
+        });
+        
+        // 检查是否是第一次加载或者是新变量
+        const isNewVariable = !formData.templateVariables?.private?.hasOwnProperty(varName);
+        
+        if (isFirstLoad || isNewVariable) {
+          // 第一次加载或新变量：从数据库加载
+          if (dbVar && dbVar.values && dbVar.values.length > 0) {
+            newTemplateVariables.private![varName] = [...dbVar.values];
+            console.log(`  -> [DB Load] Loaded ${dbVar.values.length} values from database:`, dbVar.values);
+          } else {
+            // 初始化为空值
+            newTemplateVariables.private![varName] = [""];
+            console.log(`  -> [Empty] No values found in database, initialized as empty`);
+          }
+        } else {
+          // 保留用户编辑的值
+          const existingValues = formData.templateVariables?.private?.[varName];
+          if (existingValues && existingValues.length > 0) {
+            newTemplateVariables.private![varName] = existingValues;
+            console.log(`  -> [Keep] Keeping existing ${existingValues.length} values:`, existingValues);
+          } else {
+            newTemplateVariables.private![varName] = [""];
+            console.log(`  -> [Empty] No valid existing values, initialized as empty`);
+          }
         }
-      });
+      }
 
       // 清理不存在的私有变量
       if (newTemplateVariables.private) {
@@ -121,10 +181,15 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
         ...prev,
         templateVariables: newTemplateVariables,
       }));
+      
+      // 重置首次加载标志
+      if (isFirstLoad) {
+        setIsFirstLoad(false);
+      }
     };
     
     loadVariableInfo();
-  }, [formData.template]);
+  }, [formData.template, template?.id, isFirstLoad]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,11 +201,12 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
       // 更新模板
       await dbService.updateTemplate(template.id, formData);
       
-      // 同步变量更新
+      // 同步变量更新，包括私有变量的值
       await variableManager.syncTemplateVariables(
         template.id,
         previousDetectedVars,
-        currentDetectedVars
+        currentDetectedVars,
+        formData.templateVariables?.private
       );
     } else {
       // 创建新模板
@@ -148,12 +214,13 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
         formData as Omit<TestTemplate, "id" | "createdAt" | "lastUpdated">,
       );
       
-      // 为新模板同步变量
+      // 为新模板同步变量，包括私有变量的值
       if (newTemplateId && typeof newTemplateId === 'string') {
         await variableManager.syncTemplateVariables(
           newTemplateId,
           [],
-          currentDetectedVars
+          currentDetectedVars,
+          formData.templateVariables?.private
         );
       }
     }
@@ -192,24 +259,41 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
       const allVariables = await dbService.getAllCustomVariables();
       const values: Record<string, string[]> = {};
       
+      // 先从数据库加载所有自定义变量的值（包括公共和私有）
       allVariables.forEach(v => {
-        values[v.name] = v.values || [];
-      });
-      
-      // 如果数据库中没有，从 variableDataGenerator 获取
-      detectedVariables.forEach(({ name }) => {
-        if (!values[name] && variableDataGenerator.hasVariable(name)) {
-          values[name] = variableDataGenerator.getAllValues(name);
+        if (v.values && v.values.length > 0) {
+          values[v.name] = v.values;
+          console.log(`Loaded ${v.scope} variable ${v.name} from DB:`, v.values.length, 'values');
         }
       });
       
+      // 对于每个检测到的变量，确保有完整的值
+      detectedVariables.forEach(({ name, scope, isGlobal }) => {
+        // 优先从数据库获取值
+        if (!values[name] || values[name].length === 0) {
+          // 私有变量从模板配置中获取
+          if (scope === 'private') {
+            const templatePrivateValues = formData.templateVariables?.private?.[name];
+            if (templatePrivateValues && templatePrivateValues.length > 0) {
+              values[name] = templatePrivateValues;
+              console.log(`Loading private variable ${name} from template config:`, templatePrivateValues.length, 'values');
+            } else {
+              // 如果完全没有值，初始化为空数组
+              values[name] = [];
+              console.log(`Private variable ${name} has no values, initialized as empty`);
+            }
+          }
+        }
+      });
+      
+      console.log('Final loaded variable values:', values);
       setVariableValues(values);
     };
     
     if (detectedVariables.length > 0) {
       loadVariableValues();
     }
-  }, [detectedVariables]);
+  }, [detectedVariables, formData.templateVariables]);
   
   // 获取公共变量的所有枚举值（只读展示）
   const getGlobalVariableValues = (varName: string): string[] => {
@@ -413,7 +497,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
               {/* 变量列表 */}
               {detectedVariables.length > 0 ? (
                 <div className="space-y-3">
-                  {detectedVariables.map(({ name: varName, isGlobal }) => (
+                  {detectedVariables.map(({ name: varName, isGlobal, usageCount }) => (
                     <div key={varName} className="p-3 bg-dark-bg rounded-lg">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
@@ -424,6 +508,11 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                           >
                             {isGlobal ? "公共" : "私有"}
                           </Badge>
+                          {usageCount && (
+                            <span className="text-xs text-gray-500">
+                              被 {usageCount} 个模板使用
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -433,26 +522,35 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                           <p className="text-xs text-gray-500 mb-1">
                             枚举值（公共变量，在变量管理中定义）：
                           </p>
-                          <div className="max-h-32 overflow-y-auto border border-dark-border rounded p-2">
+                          <div className="max-h-48 overflow-y-auto border border-dark-border rounded p-2 bg-dark-bg/50">
                             <div className="flex flex-wrap gap-1">
-                              {getGlobalVariableValues(varName).map(
-                                (value, idx) => (
-                                  <Badge key={idx} variant="default" size="sm">
-                                    {value}
-                                  </Badge>
-                                ),
-                              )}
+                              {(() => {
+                                const allValues = getGlobalVariableValues(varName);
+                                console.log(`Variable ${varName} has ${allValues.length} values:`, allValues);
+                                return allValues.length > 0 ? (
+                                  allValues.map((value, idx) => (
+                                    <Badge key={idx} variant="default" size="sm" className="text-xs">
+                                      {value}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span className="text-gray-500 text-xs">暂无枚举值</span>
+                                );
+                              })()}
                             </div>
                           </div>
                           <p className="text-xs text-gray-600">
-                            共 {getGlobalVariableValues(varName).length} 个值
+                            共 {getGlobalVariableValues(varName).length} 个枚举值 
+                            {getGlobalVariableValues(varName).length > 20 && 
+                              <span className="text-gray-500">（滚动查看全部）</span>
+                            }
                           </p>
                         </div>
                       ) : (
                         // 私有变量 - 可编辑
                         <div className="space-y-1">
                           <p className="text-xs text-gray-500 mb-1">
-                            枚举值（必须至少填写一个）：
+                            枚举值（私有变量，可在此编辑）：
                           </p>
                           {(
                             formData.templateVariables?.private?.[varName] || [
@@ -475,7 +573,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                                     newValues,
                                   );
                                 }}
-                                placeholder="输入变量值"
+                                placeholder="输入或编辑变量值"
                                 required
                               />
                               {(formData.templateVariables?.private?.[varName]

@@ -102,6 +102,13 @@ const Templates: React.FC = () => {
       };
       reader.readAsText(file);
     }
+    // Reset the input value to allow re-importing the same file
+    event.target.value = '';
+  };
+
+  const handleImportClick = () => {
+    const fileInput = document.getElementById('template-import-input') as HTMLInputElement;
+    fileInput?.click();
   };
 
 
@@ -113,23 +120,22 @@ const Templates: React.FC = () => {
             <h1 className="text-3xl font-bold text-white">模板管理</h1>
             <p className="text-gray-400 mt-1">管理和配置越狱测试模板</p>
           </div>
-          <div className="flex space-x-3">
-            <Button variant="ghost" size="sm" onClick={exportTemplates}>
+          <div className="flex items-center space-x-3">
+            <Button variant="ghost" onClick={exportTemplates}>
               <Download className="w-4 h-4 flex-shrink-0" />
               导出
             </Button>
-            <label className="inline-block">
-              <div className="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium bg-transparent hover:bg-dark-border text-gray-300 hover:text-white transition-colors cursor-pointer whitespace-nowrap">
-                <Upload className="w-4 h-4 flex-shrink-0" />
-                导入
-              </div>
-              <input
-                type="file"
-                accept=".json"
-                onChange={importTemplates}
-                className="hidden"
-              />
-            </label>
+            <Button variant="ghost" onClick={handleImportClick}>
+              <Upload className="w-4 h-4 flex-shrink-0" />
+              导入
+            </Button>
+            <input
+              id="template-import-input"
+              type="file"
+              accept=".json"
+              onChange={importTemplates}
+              className="hidden"
+            />
             <Button onClick={() => {
               setEditingTemplate(null);
               setShowEditor(true);

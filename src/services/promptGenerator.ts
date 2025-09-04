@@ -1,6 +1,6 @@
 import type { TestTemplate, TemplateVariable } from '../types';
-import { variableDataGenerator } from './variableDataGenerator';
 import { detectTemplateVariables } from '../utils/variableDetector';
+import { dbService } from '../lib/db';
 
 interface GeneratorOptions {
   variations?: number;
@@ -44,6 +44,45 @@ class PromptGenerator {
     ],
   };
 
+  async generateFromTemplateAsync(template: TestTemplate, options: GeneratorOptions = {}): Promise<string[]> {
+    const prompts: string[] = [];
+    const { variations = 3, randomize = true, useAdditionalTechniques = false } = options;
+
+    // 为每个变化生成不同的值，确保多样性
+    for (let i = 0; i < variations; i++) {
+      const prompt = await this.replaceVariablesAsync(template.template, template.variables || [], template);
+      // 确保每次生成的prompt都不同
+      if (!prompts.includes(prompt)) {
+        prompts.push(prompt);
+      }
+    }
+
+    // 只有在明确要求时才添加额外的技术变体
+    if (useAdditionalTechniques && template.category && this.jailbreakTechniques[template.category]) {
+      const techniques = this.jailbreakTechniques[template.category];
+      for (const technique of techniques) {
+        const prompt = await this.replaceVariablesAsync(technique, template.variables || [], template);
+        if (!prompts.includes(prompt)) {
+          prompts.push(prompt);
+        }
+      }
+    }
+
+    // 如果生成的prompts数量不足，再生成一些（使用模板本身的内容）
+    let attempts = 0;
+    while (prompts.length < variations && attempts < variations * 3) {
+      const prompt = await this.replaceVariablesAsync(template.template, template.variables || [], template);
+      if (!prompts.includes(prompt)) {
+        prompts.push(prompt);
+      }
+      attempts++;
+    }
+
+    // 确保返回的数量不超过要求的variations
+    const result = prompts.slice(0, variations);
+    return randomize ? this.shuffleArray(result) : result;
+  }
+
   generateFromTemplate(template: TestTemplate, options: GeneratorOptions = {}): string[] {
     const prompts: string[] = [];
     const { variations = 3, randomize = true, useAdditionalTechniques = false } = options;
@@ -83,9 +122,13 @@ class PromptGenerator {
     return randomize ? this.shuffleArray(result) : result;
   }
 
-  private replaceVariables(template: string, variables: TemplateVariable[], fullTemplate?: TestTemplate): string {
+  private async replaceVariablesAsync(template: string, variables: TemplateVariable[], fullTemplate?: TestTemplate): Promise<string> {
     let result = template;
     const processedVariables = new Set<string>();
+
+    // 获取所有自定义变量
+    const allVariables = await dbService.getAllCustomVariables();
+    const varMap = new Map(allVariables.map(v => [v.name, v]));
 
     // 处理极简的变量结构
     if (fullTemplate?.templateVariables) {
@@ -122,8 +165,63 @@ class PromptGenerator {
         global.forEach(varName => {
           if (!processedVariables.has(varName)) {
             const placeholder = `{${varName}}`;
-            if (result.includes(placeholder) && variableDataGenerator.hasVariable(varName)) {
-              const value = variableDataGenerator.getRandomValue(varName);
+            const dbVar = varMap.get(varName);
+            if (result.includes(placeholder) && dbVar && dbVar.values && dbVar.values.length > 0) {
+              const value = dbVar.values[Math.floor(Math.random() * dbVar.values.length)];
+              result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+              processedVariables.add(varName);
+            }
+          }
+        });
+      }
+    }
+
+    return result;
+  }
+
+  private replaceVariables(template: string, variables: TemplateVariable[], fullTemplate?: TestTemplate): string {
+    // 同步版本，用于兼容
+    let result = template;
+    const processedVariables = new Set<string>();
+
+    // 处理极简的变量结构
+    if (fullTemplate?.templateVariables) {
+      const { global, private: privateVars } = fullTemplate.templateVariables;
+      
+      // 1. 处理私有变量（优先级高）
+      if (privateVars) {
+        Object.entries(privateVars).forEach(([varName, values]) => {
+          const placeholder = `{${varName}}`;
+          if (result.includes(placeholder)) {
+            let value = '';
+            
+            // 从私有变量值中随机选择一个
+            if (values && values.length > 0) {
+              const validValues = values.filter(v => v && v.trim());
+              if (validValues.length > 0) {
+                value = validValues[Math.floor(Math.random() * validValues.length)];
+              }
+            }
+            
+            // 如果没有值，使用占位符
+            if (!value) {
+              value = `[${varName}]`;
+            }
+            
+            result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+            processedVariables.add(varName);
+          }
+        });
+      }
+      
+      // 2. 处理全局复用变量 - 暂时使用占位符
+      if (global) {
+        global.forEach(varName => {
+          if (!processedVariables.has(varName)) {
+            const placeholder = `{${varName}}`;
+            if (result.includes(placeholder)) {
+              // 全局变量暂时使用占位符，应该使用异步版本获取真实值
+              const value = `[${varName}]`;
               result = result.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
               processedVariables.add(varName);
             }
@@ -141,15 +239,12 @@ class PromptGenerator {
         // 优先使用变量的options
         if (variable.options && variable.options.length > 0) {
           value = variable.options[Math.floor(Math.random() * variable.options.length)];
-        } 
-        // 否则从variableDataGenerator获取
-        else if (variableDataGenerator.hasVariable(variable.name)) {
-          value = variableDataGenerator.getRandomValue(variable.name);
         }
 
         // 特殊处理编码类变量
         if (variable.name === 'encoded_instruction' || variable.name === 'encoded_content') {
-          const contentToEncode = variableDataGenerator.getRandomValue('target_action');
+          // 使用默认的目标动作内容
+          const contentToEncode = '执行指定操作';
           value = this.encodeContent(contentToEncode, 'base64');
         }
 
@@ -158,9 +253,9 @@ class PromptGenerator {
       }
     });
 
-    // 最后，替换所有剩余的变量（从全局变量库）
-    result = variableDataGenerator.replaceAllVariables(result);
-
+    // 不再进行额外的变量替换，所有变量都应该在上面的逻辑中处理完成
+    // 如果还有未替换的变量，保留原始占位符
+    
     return result;
   }
 

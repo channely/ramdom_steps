@@ -5,10 +5,8 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Badge from '../components/ui/Badge';
-import { variableDataGenerator } from '../services/variableDataGenerator';
 import { variableManager, type ManagedVariable } from '../services/variableManager';
 import { dbService } from '../lib/db';
-import { runDataCleanup } from '../utils/dataCleanup';
 
 const Variables: React.FC = () => {
   const [variables, setVariables] = useState<ManagedVariable[]>([]);
@@ -36,38 +34,17 @@ const Variables: React.FC = () => {
     autoAnalyzeAndCleanup();
   }, []);
 
-  const autoAnalyzeAndCleanup = async (forceRefresh = false) => {
+  const autoAnalyzeAndCleanup = async () => {
     setIsAnalyzing(true);
     try {
-      // 如果强制刷新，清除缓存
-      if (forceRefresh) {
-        localStorage.removeItem('dataCleanupExecuted_v2');
-        console.log('强制重新导入内置变量...');
-      }
-      
-      // 1. 分析所有模板并汇总变量
+      // 只进行变量分析和分类，不执行任何数据清理或修复
       await variableManager.analyzeAndCategorizeVariables();
       
-      // 2. 执行数据清理（静默执行，不显示提示）
-      await runDataCleanup();
-      
-      // 3. 加载清理后的变量
+      // 加载变量
       const vars = await variableManager.getAllManagedVariables();
       setVariables(vars);
-      
-      // 4. 同步自定义变量到 variableDataGenerator
-      const customVars = await dbService.getAllCustomVariables();
-      customVars.forEach(customVar => {
-        if (customVar.name && customVar.values && customVar.values.length > 0) {
-          variableDataGenerator.addVariableData(customVar.name, customVar.values);
-        }
-      });
-      
-      if (forceRefresh) {
-        localStorage.setItem('dataCleanupExecuted_v2', 'true');
-      }
     } catch (error) {
-      console.error('自动分析和清理失败:', error);
+      console.error('变量分析失败:', error);
     } finally {
       setIsAnalyzing(false);
     }
@@ -77,14 +54,6 @@ const Variables: React.FC = () => {
     try {
       const vars = await variableManager.getAllManagedVariables();
       setVariables(vars);
-      
-      // 同步自定义变量到 variableDataGenerator
-      const customVars = await dbService.getAllCustomVariables();
-      customVars.forEach(customVar => {
-        if (customVar.name && customVar.values && customVar.values.length > 0) {
-          variableDataGenerator.addVariableData(customVar.name, customVar.values);
-        }
-      });
     } catch (error) {
       console.error('加载变量失败:', error);
     }
@@ -140,6 +109,9 @@ const Variables: React.FC = () => {
     }
   };
 
+  // 移除了所有自动修复函数，避免隐性操作影响用户数据
+  // 用户可以通过编辑变量或模板来完全控制自己的数据
+
 
 
 
@@ -153,17 +125,8 @@ const Variables: React.FC = () => {
           {isAnalyzing && (
             <p className="text-sm text-blue-400 mt-2 flex items-center">
               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              正在自动分析和整理变量...
+              正在处理...
             </p>
-          )}
-          {/* 临时调试按钮 */}
-          {!isAnalyzing && (
-            <button 
-              onClick={() => autoAnalyzeAndCleanup(true)}
-              className="text-xs text-gray-500 hover:text-gray-300 mt-2"
-            >
-              [强制重新导入所有变量]
-            </button>
           )}
         </div>
 

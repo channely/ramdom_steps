@@ -1,8 +1,6 @@
 import { dbService } from '../lib/db';
 import initialTemplates from '../data/initialTemplates';
 import advancedTemplates from '../data/advancedTemplates';
-import { loadCustomVariablesToGenerator } from './loadCustomVariables';
-import { variableDataGenerator } from '../services/variableDataGenerator';
 import { detectTemplateVariables } from './variableDetector';
 import { variableManager } from '../services/variableManager';
 import { runDataCleanup } from './dataCleanup';
@@ -79,12 +77,8 @@ export const initializeApp = async () => {
       console.log('创建默认API配置');
     }
 
-    // 加载自定义变量到生成器
-    const customVarCount = await loadCustomVariablesToGenerator();
-    console.log(`加载了 ${customVarCount} 个自定义变量到生成器`);
-
-    // 自动迁移现有模板的变量配置
-    await migrateTemplateVariables();
+    // 自动迁移现有模板的变量配置 - 不再需要，因为变量管理已改为基于数据库
+    // await migrateTemplateVariables();
     
     // 分析并分类所有变量
     try {
@@ -121,56 +115,8 @@ export const initializeApp = async () => {
   }
 };
 
-// 自动迁移模板变量配置
-const migrateTemplateVariables = async () => {
-  try {
-    const templates = await dbService.getAllTemplates();
-    let migratedCount = 0;
-    
-    for (const template of templates) {
-      // 跳过已经配置的模板
-      if (template.templateVariables?.global || template.templateVariables?.private) {
-        continue;
-      }
-      
-      // 使用智能检测函数检测变量
-      const detectedVarNames = detectTemplateVariables(template.template);
-      const detectedVars = new Set(detectedVarNames);
-      
-      if (detectedVars.size === 0) continue;
-      
-      // 自动分类变量
-      const globalVars: string[] = [];
-      const privateVars: Record<string, string[]> = {};
-      
-      detectedVars.forEach(varName => {
-        if (variableDataGenerator.hasVariable(varName)) {
-          globalVars.push(varName);
-        } else {
-          // 私有变量，提供默认值
-          privateVars[varName] = [`示例${varName}值`];
-        }
-      });
-      
-      // 更新模板
-      await dbService.updateTemplate(template.id!, {
-        ...template,
-        templateVariables: {
-          global: globalVars.length > 0 ? globalVars : undefined,
-          private: Object.keys(privateVars).length > 0 ? privateVars : undefined
-        }
-      });
-      
-      migratedCount++;
-    }
-    
-    if (migratedCount > 0) {
-      console.log(`成功迁移 ${migratedCount} 个模板的变量配置`);
-    }
-  } catch (error) {
-    console.error('模板变量迁移失败:', error);
-  }
-};
+// 自动迁移模板变量配置 - 不再需要，变量管理已改为基于数据库
+// const migrateTemplateVariables = async () => { ... };
 
 export const resetApp = async () => {
   if (confirm('确定要重置应用吗？这将删除所有数据并重新加载初始模板。')) {

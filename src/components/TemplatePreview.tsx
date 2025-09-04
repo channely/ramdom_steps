@@ -5,7 +5,7 @@ import Badge from './ui/Badge';
 import Card from './ui/Card';
 import type { TestTemplate } from '../types';
 import { promptGenerator } from '../services/promptGenerator';
-import { variableDataGenerator } from '../services/variableDataGenerator';
+import { dbService } from '../lib/db';
 
 interface TemplatePreviewProps {
   template: TestTemplate;
@@ -18,9 +18,9 @@ const TemplatePreview: React.FC<TemplatePreviewProps> = ({ template, onClose }) 
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
 
   // 生成预览
-  const generatePreview = () => {
+  const generatePreview = async () => {
     // 生成3个变体
-    const prompts = promptGenerator.generateFromTemplate(template, { 
+    const prompts = await promptGenerator.generateFromTemplateAsync(template, { 
       variations: 3, 
       randomize: false 
     });
@@ -32,10 +32,25 @@ const TemplatePreview: React.FC<TemplatePreviewProps> = ({ template, onClose }) 
     
     // 从模板中提取所有变量名
     const matches = template.template.matchAll(variablePattern);
+    const allVariables = await dbService.getAllCustomVariables();
+    const varMap = new Map(allVariables.map(v => [v.name, v]));
+    
     for (const match of matches) {
       const varName = match[1];
       if (!variables[varName]) {
-        variables[varName] = variableDataGenerator.getRandomValue(varName);
+        const dbVar = varMap.get(varName);
+        if (dbVar && dbVar.values && dbVar.values.length > 0) {
+          variables[varName] = dbVar.values[Math.floor(Math.random() * dbVar.values.length)];
+        } else if (template.templateVariables?.private && template.templateVariables.private[varName]) {
+          const values = template.templateVariables.private[varName];
+          if (values && values.length > 0) {
+            variables[varName] = values[Math.floor(Math.random() * values.length)];
+          } else {
+            variables[varName] = `[${varName}]`;
+          }
+        } else {
+          variables[varName] = `[${varName}]`;
+        }
       }
     }
     
