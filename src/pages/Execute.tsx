@@ -22,6 +22,8 @@ const Execute: React.FC = () => {
   const [sessionId, setSessionId] = useState<string>('');
   const [useMockMode, setUseMockMode] = useState(true); // 默认使用模拟模式
   const [testCount, setTestCount] = useState(3); // 每个模板的测试次数
+  const [expectedTotalTests, setExpectedTotalTests] = useState(0); // 期望的总测试数
+  const [actualGeneratedTests, setActualGeneratedTests] = useState(0); // 实际生成的测试数
 
   useEffect(() => {
     loadData();
@@ -82,33 +84,23 @@ const Execute: React.FC = () => {
       apiConfig!
 
     const totalTestCount = selectedTemplates.length * testCount;
-    const session = await dbService.createSession({
-      name: `测试会话 ${new Date().toLocaleString()}`,
-      description: `测试 ${selectedTemplates.length} 个模板，每个 ${testCount} 次`,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      totalTests: totalTestCount,
-      completedTests: 0,
-      vulnerableTests: 0,
-      status: 'running',
-    });
-
-    setSessionId(session as string);
-    setIsRunning(true);
-    setIsPaused(false);
-
+    setExpectedTotalTests(totalTestCount); // 设置期望的总测试数
+    
     const queue: any[] = [];
+    let actualGenerated = 0;
+    
     for (const templateId of selectedTemplates) {
       const template = templates.find(t => t.id === templateId);
       if (template) {
-        console.log(`生成测试用例，模板: ${template.name}, 次数: ${testCount}`);
+        console.log(`生成测试用例，模板: ${template.name}, 期望次数: ${testCount}`);
         // 只生成用户指定次数的测试用例，不使用额外的技术变体
         const prompts = promptGenerator.generateFromTemplate(template, {
           variations: testCount,
           randomize: true,
           useAdditionalTechniques: false // 不使用额外的技术变体
         });
-        console.log(`生成了 ${prompts.length} 个测试用例`);
+        console.log(`实际生成了 ${prompts.length} 个测试用例`);
+        actualGenerated += prompts.length;
         
         prompts.forEach(prompt => {
           queue.push({
@@ -122,7 +114,23 @@ const Execute: React.FC = () => {
       }
     }
 
-    console.log(`总共生成 ${queue.length} 个测试任务`);
+    setActualGeneratedTests(actualGenerated); // 设置实际生成的测试数
+    console.log(`期望生成 ${totalTestCount} 个测试，实际生成 ${actualGenerated} 个测试任务`);
+    
+    const session = await dbService.createSession({
+      name: `测试会话 ${new Date().toLocaleString()}`,
+      description: `测试 ${selectedTemplates.length} 个模板，每个期望 ${testCount} 次，实际生成 ${actualGenerated} 个测试`,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      totalTests: actualGenerated, // 使用实际生成的数量
+      completedTests: 0,
+      vulnerableTests: 0,
+      status: 'running',
+    });
+
+    setSessionId(session as string);
+    setIsRunning(true);
+    setIsPaused(false);
     setTestQueue(queue);
     
     // 使用setTimeout确保状态更新后再执行
@@ -218,6 +226,8 @@ const Execute: React.FC = () => {
     setCurrentTest(null);
     setResults([]);
     setSelectedTemplates([]);
+    setExpectedTotalTests(0);
+    setActualGeneratedTests(0);
   };
 
   const completedCount = testQueue.filter(t => t.status === 'completed').length;
@@ -280,6 +290,12 @@ const Execute: React.FC = () => {
                 <span className="text-gray-400">总进度</span>
                 <span className="text-white">{completedCount} / {testQueue.length}</span>
               </div>
+              {expectedTotalTests !== actualGeneratedTests && testQueue.length > 0 && (
+                <div className="text-xs text-yellow-500 bg-yellow-900/20 p-2 rounded">
+                  注意：期望生成 {expectedTotalTests} 个测试，实际生成 {actualGeneratedTests} 个
+                  （部分模板可能因变量组合有限而无法生成足够的唯一变体）
+                </div>
+              )}
               <div className="w-full bg-dark-bg rounded-full h-3">
                 <div
                   className="bg-accent-red h-3 rounded-full transition-all duration-300"
@@ -319,9 +335,16 @@ const Execute: React.FC = () => {
           <Card 
             title="测试控制"
             actions={
-              <Badge variant={selectedTemplates.length > 0 ? "success" : "default"}>
-                已选: {selectedTemplates.length}
-              </Badge>
+              <div className="flex gap-2">
+                <Badge variant={selectedTemplates.length > 0 ? "success" : "default"}>
+                  模板: {selectedTemplates.length}
+                </Badge>
+                {selectedTemplates.length > 0 && (
+                  <Badge variant="info">
+                    预计: {selectedTemplates.length * testCount} 测试
+                  </Badge>
+                )}
+              </div>
             }
           >
             <div className="space-y-4">
@@ -399,8 +422,13 @@ const Execute: React.FC = () => {
                   <span className="text-white font-bold w-8 text-center">{testCount}</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  每个选中的模板将生成 {testCount} 个不同的测试提示词
+                  每个选中的模板将尝试生成 {testCount} 个不同的测试提示词
                 </p>
+                {selectedTemplates.length > 0 && (
+                  <p className="text-xs text-blue-400 mt-1">
+                    预计总测试数: {selectedTemplates.length} × {testCount} = {selectedTemplates.length * testCount} 个
+                  </p>
+                )}
               </div>
 
               <div className="flex flex-col space-y-2">
@@ -446,8 +474,29 @@ const Execute: React.FC = () => {
             </div>
           </Card>
 
-          <Card title="测试结果摘要" className="mt-6">
+          <Card title="测试统计" className="mt-6">
             <div className="space-y-3">
+              <div className="text-xs text-gray-500 pb-2 border-b border-dark-border">
+                <div className="flex justify-between mb-1">
+                  <span>选中模板数</span>
+                  <span className="text-white">{selectedTemplates.length}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>每模板测试次数</span>
+                  <span className="text-white">× {testCount}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span>期望测试总数</span>
+                  <span className="text-white">= {selectedTemplates.length * testCount}</span>
+                </div>
+                {actualGeneratedTests > 0 && actualGeneratedTests !== expectedTotalTests && (
+                  <div className="flex justify-between mt-1 text-yellow-500">
+                    <span>实际生成数</span>
+                    <span>{actualGeneratedTests}</span>
+                  </div>
+                )}
+              </div>
+              
               <div className="flex justify-between">
                 <span className="text-gray-400">发现漏洞</span>
                 <span className="text-accent-red font-bold">
